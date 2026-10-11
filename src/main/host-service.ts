@@ -1,3 +1,5 @@
+import { RcGateway } from "./rc-gateway";
+import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { dirname, join } from "node:path";
 import { createInviteUrl } from "@dani-dex/contracts/invite-links";
@@ -71,6 +73,8 @@ interface HostEvents {
 type ForwardedApiOptions = ConstructorParameters<typeof TeamApiServer>[0];
 
 interface HostServiceOptions {
+  devicePairingStatePath?: string;
+  rcGateway?: { statePath: string; executable: string };
   channels?: ChannelService;
   mcpServers?: ForwardedApiOptions["mcpServers"];
   mcpToolRuntimePreparation?: ForwardedApiOptions["mcpToolRuntimePreparation"];
@@ -154,6 +158,7 @@ export class HostService extends EventEmitter<HostEvents> {
   readonly #browserView: BrowserViewGateway;
   readonly #webrtcGateway: TeamWebRtcHostGateway | null;
   #status: HostStatus;
+  #rcGateway: RcGateway | null = null;
   #runtimeGeneration = 0;
   #startOperation: Promise<HostStatus> | null = null;
   #webRtcOnline = false;
@@ -215,6 +220,7 @@ export class HostService extends EventEmitter<HostEvents> {
       authenticate: (token) => options.store.authenticate(token),
     });
     this.#api = new TeamApiServer({
+      devicePairingStatePath: options.devicePairingStatePath,
       appVersion: options.appVersion,
       store: options.store,
       agents: options.agents,
@@ -260,6 +266,14 @@ export class HostService extends EventEmitter<HostEvents> {
         })
       : null;
   }
+
+  async initializeRcGateway(): Promise<void> {
+    if (!this.#options.rcGateway) return;
+    this.#rcGateway = new RcGateway({ ...this.#options.rcGateway, target: async () => { await this.startDevelopmentLocal(); const url = this.#localApiUrl(); if (!url) throw Error("Host API unavailable"); return url; } });
+    await this.#rcGateway.initialize();
+  }
+  getRcGateway() { return this.#rcGateway?.getStatus() ?? { enabled: false, phase: "off" as const, origin: null, previousOrigin: null, changedAt: null, message: "RC tunnel runtime is not installed on this host." }; }
+  async setRcGateway(enabled: boolean) { if (!this.#rcGateway) throw Error("RC tunnel runtime is not installed on this host."); return this.#rcGateway.setEnabled(enabled); }
 
   getStatus(): HostStatus {
     const capabilities = this.#remoteScreen.capabilities();
@@ -610,6 +624,18 @@ export class HostService extends EventEmitter<HostEvents> {
     return this.getStatus();
   }
 
+  async createDevicePairingLink(origin: string): Promise<{ url: string; expiresAt: number; code: string; appUrl: string }> {
+    const candidate = new URL(origin);
+    if (candidate.protocol !== "https:" || candidate.username || candidate.password || candidate.pathname !== "/" || candidate.search || candidate.hash)
+      throw new Error("Device pairing needs the host's HTTPS origin.");
+    if (!this.#options.store.configured) {
+      await this.#options.store.configure("Dani-Dex", "device-owner", randomBytes(32).toString("base64url"));
+      this.#publishActiveHost(null);
+    }
+    await this.startDevelopmentLocal();
+    return this.#api.createDevicePairingLink(origin);
+  }
+
   async startDevelopmentLocal(): Promise<HostStatus> {
     if (!this.#options.store.configured) throw new Error("Name this Dani-Dex before starting local development.");
     if (this.#status.phase === "online") return this.getStatus();
@@ -896,7 +922,10 @@ export class HostService extends EventEmitter<HostEvents> {
   }
 
   async #revokeWebRtcSession(sessionId: string): Promise<void> {
-    await Promise.all([this.#options.endRemoteSession?.(sessionId), this.#webrtcGateway?.revokeSession(sessionId)]);
+    await Promise.all([
+      this.#status.message === "Local development host is ready." ? undefined : this.#options.endRemoteSession?.(sessionId),
+      this.#webrtcGateway?.revokeSession(sessionId),
+    ]);
   }
 
   revokeInvite(inviteId: string): Promise<void> {
@@ -997,6 +1026,7 @@ export class HostService extends EventEmitter<HostEvents> {
   }
 
   async shutdown(): Promise<void> {
+    await this.#rcGateway?.shutdown();
     await this.stop(false);
   }
 

@@ -128,6 +128,9 @@ export function teamIpcHandlers({
       ),
     },
     host: {
+      getRcGateway: handler(() => host.getRcGateway()),
+      setRcGateway: payloadHandler((value: unknown) => { if (typeof value !== "boolean") throw new Error("RC enabled must be a boolean."); return value; }, (enabled) => host.setRcGateway(enabled)),
+      createDevicePairingLink: payloadHandler(stringPayload("origin", 2048), (origin) => host.createDevicePairingLink(origin)),
       getStatus: handler(() => host.getStatus()),
       configure: payloadHandler(parseHostConfig, (config) => host.configure(config)),
       updateIdentity: payloadHandler(parseHostIdentity, (identity) => host.updateIdentity(identity)),

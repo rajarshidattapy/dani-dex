@@ -159,6 +159,7 @@ export type TeamApiRemoteScreen = Pick<
   Partial<Pick<RemoteScreenGateway, "checkSetup" | "test">>;
 
 export interface TeamApiOptions {
+  devicePairingStatePath?: string;
   channels?: ChannelService;
   mcpServers?: TeamApiMcpServers;
   /** Starts and waits for the managed tool runtimes behind the MCP save, enable, and test routes. */

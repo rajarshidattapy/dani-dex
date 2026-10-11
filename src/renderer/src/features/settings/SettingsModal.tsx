@@ -230,7 +230,9 @@ export function SettingsModal(props: SettingsModalProps) {
   const hostedSites = createSettingsHostedSitesStore(props, () => activeTab() === "hosted-sites");
 
   const title = () => i18n.t(navItem(activeTab()).titleKey);
-  const description = () => i18n.t(navItem(activeTab()).descriptionKey);
+  const description = () => activeTab() === "mobile-connect" && props.onlineServices === false
+    ? "Pair your phone with this running Dani-Dex host. No account needed."
+    : i18n.t(navItem(activeTab()).descriptionKey);
 
   const tabsProps = {
     get value() {
@@ -338,7 +340,7 @@ export function SettingsModal(props: SettingsModalProps) {
             {navItems
               .filter(
                 (item) =>
-                  props.onlineServices !== false || (item.value !== "mobile-connect" && item.value !== "hosted-sites"),
+                  props.onlineServices !== false || item.value !== "hosted-sites",
               )
               .map((item) => {
                 const NavIcon = item.icon;
@@ -401,6 +403,7 @@ export function SettingsModal(props: SettingsModalProps) {
         <Tabs.Content value="mobile-connect" class="settings-modal-tab-panel" data-tab="mobile-connect">
           <SettingsMobileConnectTab
             store={mobileConnect}
+            accountAvailable={props.onlineServices !== false}
             canCreateTicket={Boolean(props.onCreateMobileConnect)}
             canRevokeDevice={Boolean(props.onRevokeMobileConnectedDevice)}
           />

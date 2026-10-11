@@ -24,6 +24,7 @@ import type { SettingsMobileConnectStore } from "./stores/mobile-connect-store";
 
 interface SettingsMobileConnectTabProps {
   store: SettingsMobileConnectStore;
+  accountAvailable?: boolean;
   canCreateTicket: boolean;
   canRevokeDevice: boolean;
 }
@@ -36,6 +37,7 @@ function devicePlatformLabel(platform: MobileConnectedDevice["platform"]): "iOS"
 
 export function SettingsMobileConnectTab(props: SettingsMobileConnectTabProps) {
   return (
+    <Show when={props.accountAvailable !== false}>
     <SettingsSection
       title="Connect your phone"
       description="Scan a one-time code with the Dani-Dex mobile app to use this account on your phone."

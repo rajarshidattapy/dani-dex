@@ -54,7 +54,8 @@ export function shortlistInstalledSkills(prompt: string, skills: readonly Instal
         sentence,
       ),
   );
-  if (excludesSkills) return [];
+  const excludesTools = /\b(?:do not|don't|never)\s+(?:use|call|invoke)\s+(?:any\s+|the\s+)?tools?\b/i.test(prompt);
+  if (excludesSkills || excludesTools) return [];
   const excludesAudit = /\b(?:do not|don't|never)\s+audit\b|\bno\s+(?:codebase\s+|code\s+)?audit\b/i.test(prompt);
   const query = words(prompt.slice(0, 4_000));
   if (query.size === 0) return [];

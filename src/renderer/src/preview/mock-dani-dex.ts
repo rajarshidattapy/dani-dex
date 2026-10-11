@@ -2224,6 +2224,9 @@ export function createMockDaniDex(options: MockDaniDexOptions = {}): MockDaniDex
       removeMember: async (memberId) => {
         teamMembers = teamMembers.filter((member) => member.id !== memberId);
       },
+      getRcGateway: async () => ({ enabled: false, phase: "off", origin: null, previousOrigin: null, changedAt: null, message: "RC gateway is unavailable in preview." }),
+      setRcGateway: async () => { throw Error("RC gateway is unavailable in preview."); },
+      createDevicePairingLink: async () => { throw new Error("Device pairing needs a running host; it is not available in preview."); },
       listSessions: async () => clone(sessions),
       revokeSession: async (sessionId) => {
         sessions = sessions.filter((session) => session.id !== sessionId);

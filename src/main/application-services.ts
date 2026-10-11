@@ -1051,6 +1051,8 @@ export async function createApplicationServices({
       centralAuth.updateRemoteMember(hostId, membershipId, role, reactivate),
     removeRemoteMember: (hostId, membershipId) => centralAuth.removeRemoteMember(hostId, membershipId),
     updateRemoteHostLogo: (hostId, image, version) => centralAuth.updateRemoteHostLogo(hostId, image, version),
+    devicePairingStatePath: join(app.getPath("userData"), "rc-pairing.json"),
+    rcGateway: { statePath: join(app.getPath("userData"), "rc-gateway.json"), executable: process.env.DANI_DEX_CLOUDFLARED_PATH ?? "cloudflared" },
     allowLocalDevelopmentInvites: developmentRemoteRole === "host",
     logDirectory: join(app.getPath("userData"), "logs", "remote"),
     removeLegacyRemoteDesktopCredential: async () => {
@@ -1111,6 +1113,7 @@ export async function createApplicationServices({
     // service keeps its host, and the event listener settles it.
     await host.applySignedInAccount(null);
   }
+  await host.initializeRcGateway();
   const analyticsPlatform = process.platform;
   if (analyticsPlatform !== "darwin" && analyticsPlatform !== "win32" && analyticsPlatform !== "linux") {
     throw new Error(`Unsupported analytics platform: ${analyticsPlatform}`);

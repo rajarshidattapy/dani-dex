@@ -367,6 +367,8 @@ export const IPC_ENDPOINTS = {
   },
   host: {
     getStatus: request(IPC_CHANNELS.hostGetStatus),
+    getRcGateway: request(IPC_CHANNELS.hostGetRcGateway),
+    setRcGateway: request(IPC_CHANNELS.hostSetRcGateway),
     configure: request(IPC_CHANNELS.hostConfigure),
     updateIdentity: request(IPC_CHANNELS.hostUpdateIdentity),
     getPresence: request(IPC_CHANNELS.hostGetPresence),
@@ -374,6 +376,7 @@ export const IPC_ENDPOINTS = {
     stop: request(IPC_CHANNELS.hostStop),
     recheckScreenRecording: request(IPC_CHANNELS.hostRecheckScreenRecording),
     listMembers: request(IPC_CHANNELS.hostListMembers),
+    createDevicePairingLink: request(IPC_CHANNELS.hostCreateDevicePairingLink),
     createInvite: request(IPC_CHANNELS.hostCreateInvite),
     listInvites: request(IPC_CHANNELS.hostListInvites),
     revokeInvite: request(IPC_CHANNELS.hostRevokeInvite),

@@ -469,6 +469,9 @@ export interface PluginsDesktopApi {
 }
 
 export interface HostDesktopApi {
+  getRcGateway: () => Promise<import("./ipc-team-host").RcGatewayStatus>;
+  setRcGateway: (enabled: boolean) => Promise<import("./ipc-team-host").RcGatewayStatus>;
+  createDevicePairingLink: (origin: string) => Promise<{ url: string; expiresAt: number; code: string; appUrl: string }>;
   getStatus: () => Promise<HostStatus>;
   configure: (input: ConfigureHostInput) => Promise<HostStatus>;
   updateIdentity: (input: UpdateHostIdentityInput) => Promise<HostStatus>;

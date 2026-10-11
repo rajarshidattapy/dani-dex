@@ -1332,6 +1332,8 @@ const danidexApi: DaniDexDesktopApi = {
     },
   },
   host: {
+    getRcGateway: () => ipcRenderer.invoke(IPC_CHANNELS.hostGetRcGateway).then(decodeLocalRcGateway),
+    setRcGateway: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.hostSetRcGateway, enabled).then(decodeLocalRcGateway),
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.hostGetStatus),
     configure: (input) => ipcRenderer.invoke(IPC_CHANNELS.hostConfigure, input),
     updateIdentity: (input) => ipcRenderer.invoke(IPC_CHANNELS.hostUpdateIdentity, input),
@@ -1346,6 +1348,7 @@ const danidexApi: DaniDexDesktopApi = {
     revokeSession: (sessionId) => ipcRenderer.invoke(IPC_CHANNELS.hostRevokeSession, sessionId),
     listInvites: () => ipcRenderer.invoke(IPC_CHANNELS.hostListInvites),
     revokeInvite: (inviteId) => ipcRenderer.invoke(IPC_CHANNELS.hostRevokeInvite, inviteId),
+    createDevicePairingLink: (origin) => ipcRenderer.invoke(IPC_CHANNELS.hostCreateDevicePairingLink, origin),
     createInvite: (input) => ipcRenderer.invoke(IPC_CHANNELS.hostCreateInvite, input),
     onEvent: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, status: Parameters<typeof listener>[0]) => listener(status);
@@ -1402,4 +1405,9 @@ function decodeChatGptConnection(value: unknown): import("@dani-dex/contracts/ip
   )
     throw new Error("Invalid ChatGPT registration.");
   return { clientId: value.clientId, email: value.email, planEnabled: value.planEnabled, expiresAt: value.expiresAt };
+}
+
+function decodeLocalRcGateway(value: unknown): import("@dani-dex/contracts/ipc").RcGatewayStatus {
+  if (!isDynamicRecord(value) || typeof value.enabled !== "boolean" || !isOneOf(value.phase, ["off", "connecting", "online", "reconnecting", "error"] as const) || ![value.origin, value.previousOrigin, value.changedAt, value.message].every((field) => field === null || typeof field === "string")) throw Error("Invalid RC gateway status.");
+  return { enabled: value.enabled, phase: value.phase, origin: value.origin as string | null, previousOrigin: value.previousOrigin as string | null, changedAt: value.changedAt as string | null, message: value.message as string | null };
 }

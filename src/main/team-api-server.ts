@@ -1,3 +1,4 @@
+import { routeDevicePairing } from "./team-api/route-device-pairing";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -81,6 +82,8 @@ import { routeMcpServers } from "./team-api/route-mcp";
 import { routeRemoteScreen } from "./team-api/route-remote-screen";
 import { routeTeam } from "./team-api/route-team";
 import { TeamStoreError } from "./team-store";
+import { DevicePairingService } from "./device-pairing-service";
+
 
 const EVENT_PAYLOAD_LIMIT = 256 * 1_024;
 const TYPING_TIMEOUT_MS = 5_000;
@@ -148,6 +151,7 @@ export class TeamApiServer {
   });
   readonly #rateLimitCapacity: number;
   readonly #now: () => number;
+  readonly #devicePairing: DevicePairingService;
   #server: Server | null = null;
   #port: number | null = null;
   #heartbeat: ReturnType<typeof setInterval> | null = null;
@@ -160,7 +164,10 @@ export class TeamApiServer {
     this.#options = { ...options, sidebarLayout: options.sidebarLayout ?? unavailableSidebarLayout() };
     this.#rateLimitCapacity = options.rateLimitCapacity ?? RATE_LIMIT_CAPACITY;
     this.#now = options.now ?? Date.now;
+    this.#devicePairing = new DevicePairingService(options.store, this.#now, options.devicePairingStatePath);
   }
+
+  createDevicePairingLink(origin: string) { return this.#devicePairing.createLink(origin); }
 
   get port(): number | null {
     return this.#port;
@@ -424,6 +431,8 @@ export class TeamApiServer {
         await this.#options.remoteScreen.handleHttp(request, response, url);
         return;
       }
+
+      if (await routeDevicePairing(request, response, url, this.#devicePairing, () => this.#checkRate(request, "device-pairing")) === "handled") return;
 
       const protocolIssue = this.#protocolIssue(request);
       if (protocolIssue) return this.#json(response, protocolIssue.status, protocolIssue.body);
