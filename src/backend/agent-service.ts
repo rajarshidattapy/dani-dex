@@ -131,6 +131,7 @@ import { type AgentClientFactory, ProviderRuntime } from "./agent/provider-runti
 import { type RoutineMutationOptions, RoutineScheduler } from "./agent/routine-scheduler";
 import { type DaniDexToolResponse, daniDexToolResult } from "./agent/routine-tools";
 import { fitRuntimeSnapshot } from "./agent/runtime-snapshot";
+import { parseWorkerHistoryPayload, sessionWorkerHistory } from "./agent/session-worker-history";
 import { type AgentSidebar, handleSidebarTool } from "./agent/sidebar-tools";
 import { LOCAL_SKILL_TOOL_DEFINITIONS, type LocalSkillTools, runLocalSkillTool } from "./agent/skill-tools";
 import { isDynamicToolCall, isRequestTimeout, providerForAgent, providerLabel } from "./agent/thread-items";
@@ -548,7 +549,15 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
               .all(publicId);
             if (rows.length > 5000)
               throw new Error("Committed history exceeds the safe event budget. Fallback paused.");
-            return rows.length ? rows.map((row) => JSON.parse(String(row.payload_json)).entry) : null;
+            const legacyOwner = store.database
+              .listProviderSessions(publicId)
+              .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]?.externalSessionId;
+            const entries = sessionWorkerHistory(
+              rows.map((row) => parseWorkerHistoryPayload(String(row.payload_json))),
+              externalId,
+              legacyOwner,
+            );
+            return entries.length ? entries : null;
           },
           append: (externalId, entry) => {
             const agentId = this.#conversation.agentForThread(externalId);
@@ -558,7 +567,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
               this.#conversation.publicThreadId(agentId, externalId),
             );
             if (!snapshot.threadId) throw new Error("Worker history snapshot is unbound.");
-            store.database.appendWorkerHistory(snapshot.threadId, entry);
+            store.database.appendWorkerHistory(snapshot.threadId, entry, externalId);
           },
         },
         // Every MCP set that leaves for a provider is remembered, so its secrets stay redactable
@@ -578,6 +587,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       scheduleDrain: (agentId) => this.#drain.scheduleDrain(agentId),
     });
     this.#attention = new AttentionRegistry({
+      hasChannelResultScope: (agentId, turnId) => this.channels?.hasActiveResultScope(agentId, turnId) ?? false,
       conversation: this.#conversation,
       browser: this.#browser,
       hostedSites: this.#hostedSites,
@@ -1350,6 +1360,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
    * it is.
    */
   #startingChoice(models: AgentModelOption[]): { provider: AgentProvider; model: AgentModelOption } | null {
+    // Unspecified creation starts on the branded, keyless free route when listed.
+    // Explicit provider/model requests still go through #creationModel unchanged.
+    const daniFree = models.find((model) => model.provider === "opencode" && model.id === "dani/dani-free-auto");
+    if (daniFree) return { provider: "opencode", model: daniFree };
     const preferredProvider = this.#providers.preferredProvider();
     const development =
       preferredProvider === DEFAULT_AGENT_PROVIDER && this.#providers.preferredModel() === null

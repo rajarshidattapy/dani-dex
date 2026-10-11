@@ -135,3 +135,12 @@ describe("continuesSenderRun", () => {
     expect(continuesSenderRun(chatRow("agent", 0), { author: "agent" }, openRow)).toBe(false);
   });
 });
+
+it("keeps a late final answer inserted before an already loaded newer user message", () => {
+  const result = windowedSnapshotMessages(
+    [{ id: "request" }, { id: "new-request" }],
+    [{ id: "older" }, { id: "request" }, { id: "late-answer" }, { id: "new-request" }],
+    { hasOlder: true, mode: "latest" },
+  );
+  expect(result.map((x) => x.id)).toEqual(["request", "late-answer", "new-request"]);
+});

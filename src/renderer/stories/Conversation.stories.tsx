@@ -24,6 +24,7 @@ import { ServersProvider } from "../src/features/servers/servers-context";
 import { SettingsProvider } from "../src/features/settings/settings-context";
 import { UsageProvider } from "../src/features/usage/usage-context";
 import { PlatformProvider } from "../src/platform";
+import { encodePcmWav } from "../src/voice-recording";
 import browserTakeoverPreviewUrl from "./assets/browser-takeover-preview.svg";
 import {
   STORY_AGENT_STATUS,
@@ -999,7 +1000,7 @@ function RecordingConversation(props: { args: Parameters<typeof Conversation>[0]
   const previousMediaDevices = navigator.mediaDevices;
   const previousMediaRecorder = window.MediaRecorder;
   class StoryMediaRecorder extends EventTarget {
-    readonly mimeType = "audio/webm";
+    readonly mimeType = "audio/wav";
     state: RecordingState = "inactive";
 
     start(): void {
@@ -1008,12 +1009,15 @@ function RecordingConversation(props: { args: Parameters<typeof Conversation>[0]
 
     stop(): void {
       this.state = "inactive";
+      const audio = new Uint8Array(encodePcmWav(new Float32Array(1_600), 16_000));
+      this.dispatchEvent(new BlobEvent("dataavailable", { data: new Blob([audio.buffer], { type: this.mimeType }) }));
+      this.dispatchEvent(new Event("stop"));
     }
   }
   Object.defineProperty(window, "MediaRecorder", { configurable: true, value: StoryMediaRecorder });
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
-    value: { getUserMedia: async () => ({ getTracks: () => [{ stop: () => undefined }] }) },
+    value: { getUserMedia: async () => new MediaStream() },
   });
   onCleanup(() => {
     Object.defineProperty(window, "MediaRecorder", { configurable: true, value: previousMediaRecorder });
@@ -1051,7 +1055,12 @@ const args: Parameters<typeof Conversation>[0] = {
   onSelectAgent: fn(),
   onUpdateAgent: async (_agentId: string, _updates: Omit<UpdateAgentInput, "agentId">) => undefined,
   onSetAgentAvatar: async (_agentId: string, _image: AvatarImageInput | null) => undefined,
-  onSendMessage: async (_body: string, _attachmentDraftIds: string[], _replyToMessageId: string | null) => true,
+  onSendMessage: async (_body: string, _attachmentDraftIds: string[], _replyToMessageId: string | null) => ({
+    messageId: "storybook-message",
+    deliveries: [],
+  }),
+  onReadAgentReplyMessages: async () => [],
+  onInterruptDelivery: async () => undefined,
   onMarkRead: async () => undefined,
   onTypingChange: fn(),
   onAnswerPrompt: async (_answers: Record<string, string[]>) => true,
@@ -1175,11 +1184,28 @@ export const AllAgentMessageTypes: Story = {
 };
 
 export const VoiceRecording: Story = {
-  name: "Voice recording",
+  name: "Voice recording — hold, release and cancel",
+  args: { onSendMessage: fn().mockResolvedValue({ messageId: "storybook-message", deliveries: [] }) },
   render: (storyArgs) => <RecordingConversation args={storyArgs} />,
-  play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("button", { name: "Create prompt with voice" }));
-    await expect(canvas.findByRole("group", { name: "Voice recording" })).resolves.toBeVisible();
+  play: async ({ canvas, args }) => {
+    const press = async () => {
+      await fireEvent.pointerDown(await canvas.findByRole("button", { name: "Create prompt with voice" }), {
+        button: 0,
+        pointerId: 1,
+      });
+      await expect(canvas.findByRole("group", { name: "Voice recording" })).resolves.toBeVisible();
+    };
+    await press();
+    await fireEvent.pointerCancel(window, { pointerId: 1 });
+    await expect(canvas.findByRole("button", { name: "Create prompt with voice" })).resolves.toBeEnabled();
+    await expect(args.onSendMessage).not.toHaveBeenCalled();
+    await expect(canvas.getByRole("textbox", { name: "Message Chief" })).toHaveTextContent("");
+    await press();
+    await fireEvent.pointerUp(window, { pointerId: 1 });
+    await fireEvent.pointerUp(window, { pointerId: 1 });
+    await waitFor(() => expect(args.onSendMessage).toHaveBeenCalledOnce());
+    // Leave the gallery showing the held state; release sends, Escape/blur cancels.
+    await press();
     await expect(canvas.findByRole("button", { name: "Stop voice recording" })).resolves.toBeVisible();
   },
 };
@@ -1638,7 +1664,17 @@ export const SevenQueuedMessages: Story = {
           },
         ],
       }));
-      return true;
+      return {
+        messageId: `${id}-message`,
+        deliveries: [
+          {
+            id,
+            recipientAgentId: queueState().agentId,
+            status: "queued" as const,
+            position: queueState().deliveries.find((delivery) => delivery.id === id)?.position ?? null,
+          },
+        ],
+      };
     };
 
     return (

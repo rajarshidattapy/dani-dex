@@ -1,4 +1,4 @@
-import type { AgentSummary, ChannelCommand } from "@dani-dex/contracts/ipc";
+import type { AgentSummary, ChannelCommand, SidebarLayoutAction, SidebarLayoutSnapshot } from "@dani-dex/contracts/ipc";
 import { describe, expect, it, vi } from "vitest";
 import { GOAL_TEAM_TEMPLATES } from "./goal-team-templates";
 import { installGoalTeam } from "./install-goal-team";
@@ -24,6 +24,39 @@ const agentFixture: AgentSummary = {
 const template = GOAL_TEAM_TEMPLATES.find((entry) => entry.name === "Bug Reproduction");
 if (!template) throw new Error("Missing Bug Reproduction template");
 
+const sectionApi = () => ({
+  listModels: vi.fn(
+    async (): Promise<import("@dani-dex/contracts/ipc").AgentModelOption[]> => [
+      {
+        provider: "opencode",
+        id: "dani/dani-free-auto",
+        name: "Dani Free",
+        description: "Built-in free model",
+        defaultReasoningEffort: "medium",
+        supportedReasoningEfforts: [],
+      },
+    ],
+  ),
+  getSidebarLayout: vi.fn(
+    async (): Promise<SidebarLayoutSnapshot> => ({
+      revision: 0,
+      sections: [],
+      order: ["people", "unassigned"],
+      agentAssignments: {},
+      agentOrder: [],
+    }),
+  ),
+  mutateSidebarLayout: vi.fn(
+    async (_action: SidebarLayoutAction): Promise<SidebarLayoutSnapshot> => ({
+      revision: 1,
+      sections: [{ id: "team-section", name: template.name }],
+      order: ["people", "unassigned", "team-section"],
+      agentAssignments: {},
+      agentOrder: [],
+    }),
+  ),
+});
+
 describe("goal team templates", () => {
   it("covers all the public use-case categories with three distinct specialist roles", () => {
     expect(GOAL_TEAM_TEMPLATES.length).toBeGreaterThanOrEqual(50);
@@ -42,7 +75,23 @@ describe("goal team templates", () => {
     const channelCommand = vi.fn(async (command: ChannelCommand) => {
       events.push(`channel:${command.type}`);
     });
-    const id = await installGoalTeam(template, { createAgent, channelCommand }, (agent) => created.push(agent));
+    const sections = sectionApi();
+    const id = await installGoalTeam(template, { createAgent, channelCommand, ...sections }, (agent) =>
+      created.push(agent),
+    );
+    expect(sections.mutateSidebarLayout).toHaveBeenCalledWith({ type: "create", name: template.name });
+    expect(sections.mutateSidebarLayout).toHaveBeenCalledTimes(5);
+    for (const agent of created)
+      expect(sections.mutateSidebarLayout).toHaveBeenCalledWith({
+        type: "assign",
+        agentId: agent.id,
+        sectionId: "team-section",
+      });
+    expect(sections.mutateSidebarLayout).toHaveBeenCalledWith({
+      type: "assign",
+      agentId: id,
+      sectionId: "team-section",
+    });
     expect(id).toBeTruthy();
     expect(createAgent).toHaveBeenCalledTimes(3);
     expect(created).toHaveLength(3);
@@ -73,11 +122,52 @@ describe("goal team templates", () => {
             return { ...agentFixture, id: "first" };
           },
           channelCommand,
+          ...sectionApi(),
         },
         (agent) => created.push(agent),
       ),
     ).rejects.toThrow("1 agent(s) were created and kept. Provider offline");
     expect(created).toHaveLength(1);
     expect(channelCommand).not.toHaveBeenCalled();
+  });
+  it("does not mutate the sidebar or create agents before Dani Free is available", async () => {
+    const sections = sectionApi();
+    sections.listModels.mockResolvedValue([]);
+    const createAgent = vi.fn();
+    const channelCommand = vi.fn();
+    await expect(installGoalTeam(template, { ...sections, createAgent, channelCommand }, vi.fn())).rejects.toThrow(
+      "Dani Free is not ready",
+    );
+    expect(createAgent).not.toHaveBeenCalled();
+    expect(sections.mutateSidebarLayout).not.toHaveBeenCalled();
+    expect(channelCommand).not.toHaveBeenCalled();
+  });
+
+  it("makes a separate uniquely named section and never assigns existing agents", async () => {
+    const sections = sectionApi();
+    sections.getSidebarLayout.mockResolvedValue({
+      revision: 2,
+      sections: [{ id: "existing", name: template.name }],
+      order: ["people", "unassigned", "existing"],
+      agentAssignments: {},
+      agentOrder: [],
+    });
+    sections.mutateSidebarLayout.mockResolvedValue({
+      revision: 3,
+      sections: [
+        { id: "existing", name: template.name },
+        { id: "team-section", name: template.name + " 2" },
+      ],
+      order: ["people", "unassigned", "existing", "team-section"],
+      agentAssignments: {},
+      agentOrder: [],
+    });
+    let count = 0;
+    const createAgent = vi.fn(async () => ({ ...agentFixture, id: `new-${++count}` }));
+    const id = await installGoalTeam(template, { ...sections, createAgent, channelCommand: vi.fn() }, vi.fn());
+    expect(sections.mutateSidebarLayout).toHaveBeenCalledWith({ type: "create", name: template.name + " 2" });
+    const assignments = sections.mutateSidebarLayout.mock.calls.map((c) => c[0]).filter((c) => c.type === "assign");
+    expect(assignments.map((c) => c.agentId)).toEqual(["new-1", "new-2", "new-3", id]);
+    expect(createAgent.mock.calls).toHaveLength(3);
   });
 });

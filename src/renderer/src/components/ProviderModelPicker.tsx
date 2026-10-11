@@ -247,7 +247,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
             <span class="provider-model-field-label">{props.label ?? "Model"}</span>
           </Show>
           <span class="provider-model-trigger-value">
-            <ProviderMark provider={activeProvider()} dani={daniOnly()} />
+            <ProviderMark provider={activeProvider()} dani={activeProvider() === "opencode"} />
             <span class="provider-model-trigger-name">{triggerModelName()}</span>
           </span>
           <ChevronDownIcon />
@@ -318,7 +318,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
                             if (next) providerButtons.get(next)?.focus();
                           }}
                         >
-                          <ProviderMark provider={provider} dani={daniOnly()} large />
+                          <ProviderMark provider={provider} dani={provider === "opencode"} large />
                         </Tabs.Trigger>
                       </Tooltip.Trigger>
                       <Tooltip.Portal>

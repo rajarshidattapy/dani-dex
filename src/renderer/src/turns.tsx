@@ -7,6 +7,7 @@ import { useAgents } from "./features/agents/agents-context";
 import { agentConversationKey, promptRequestKey } from "./features/conversation/conversation-keys";
 import { useDynamicIsland } from "./features/dynamic-island/dynamic-island-context";
 import { useServers } from "./features/servers/servers-context";
+import { interruptAgentDelivery } from "./features/voice-call/agent-reply";
 import { createScopeGuard } from "./scope-lifetime";
 import { createSimpleContext } from "./simple-context";
 
@@ -56,7 +57,7 @@ const Turns = createSimpleContext({
   init: () => {
     const { activeServerId } = useServers();
     const { dynamicIslandCoordinator } = useDynamicIsland();
-    const { activeAgent, activeAgentId, agentStatus, appendUiError } = useAgents();
+    const { activeAgent, activeAgentId, agentList, agentStatus, appendUiError } = useAgents();
     const scopeIsCurrent = createScopeGuard();
 
     // The layer-2 seed: what this server was doing the last time it was open.
@@ -232,6 +233,53 @@ const Turns = createSimpleContext({
         });
     }
 
+    async function interruptDelivery(deliveryId: string, target: { agentId: string; serverId: string }): Promise<void> {
+      const providerId = agentList().find((agent) => agent.id === target.agentId)?.provider;
+      try {
+        await interruptAgentDelivery({
+          readDelivery: async () => {
+            const queue = await window.danidex.agent.listQueue(target.agentId, target.serverId);
+            const delivery = queue.deliveries.find((delivery) => delivery.id === deliveryId);
+            const provider = agentStatus().providers?.find((item) => item.id === providerId);
+            if (
+              delivery &&
+              (delivery.status === "starting" || delivery.status === "running") &&
+              provider?.state === "error"
+            ) {
+              throw new Error(
+                provider.message ?? "The agent provider stopped before the voice message could be cancelled.",
+              );
+            }
+            return delivery;
+          },
+          onDelivery: (listener, onFailure) =>
+            window.danidex.agent.onScopedEvent(({ serverId, event }) => {
+              if (serverId !== target.serverId) return;
+              if (event.type === "status") {
+                const provider = event.status.providers?.find((item) => item.id === providerId);
+                if (provider?.state === "error" || event.status.phase === "stopped") {
+                  onFailure(
+                    provider?.message ??
+                      event.status.message ??
+                      "The agent provider stopped before the voice message could be cancelled.",
+                  );
+                }
+                return;
+              }
+              if (serverId !== target.serverId || event.type !== "queue-changed") return;
+              if (event.snapshot.agentId !== target.agentId) return;
+              listener(event.snapshot.deliveries.find((delivery) => delivery.id === deliveryId));
+            }),
+          cancel: () =>
+            window.danidex.agent.cancelQueuedMessage({ agentId: target.agentId, deliveryId }, target.serverId),
+          interrupt: (turnId) => window.danidex.agent.interrupt({ agentId: target.agentId, turnId }, target.serverId),
+        });
+      } catch (error) {
+        appendUiError(target.agentId, error, "Stop failed", target.serverId);
+        throw error;
+      }
+    }
+
     function steerQueuedMessage(deliveryId: string) {
       const agent = activeAgent();
       const turnId = agent ? activeTurns()[agent.id] : null;
@@ -351,6 +399,7 @@ const Turns = createSimpleContext({
       respondToApprovalRequest,
       respondToBrowserTakeover,
       cancelQueuedMessage,
+      interruptDelivery,
       steerQueuedMessage,
       updateQueuedMessage,
       reorderQueue,

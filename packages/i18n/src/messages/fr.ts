@@ -131,6 +131,9 @@ export const fr = {
   "settings.analytics.description":
     "Envoyer des métadonnées d’utilisation et de fiabilité, avec l’identifiant et l’e-mail de votre compte, aux services analytiques auto-hébergés d’Dani-Dex.",
   // The Settings window shell: its tab list, headers and save bar.
+  "settings.tab.hotkey.title": "Raccourci clavier",
+  "settings.tab.hotkey.description":
+    "Choisissez la touche à maintenir pour parler. Relâchez-la pour laisser Dani travailler.",
   "settings.tab.general.title": "Général",
   "settings.tab.general.description": "Contrôler le comportement d’Dani-Dex sur cet ordinateur.",
   "settings.tab.computerUse.title": "Utilisation de l’ordinateur",

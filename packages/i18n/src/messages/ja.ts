@@ -117,6 +117,8 @@ export const ja = {
   "settings.analytics.title": "製品分析データを共有する",
   "settings.analytics.description":
     "利用状況と安定性のメタデータを、アカウント ID とメールアドレスとともに Dani-Dex の自社運用の分析基盤に送信します。",
+  "settings.tab.hotkey.title": "ホットキー",
+  "settings.tab.hotkey.description": "話すときに押し続けるキーを選びます。離すとDaniが作業を始めます。",
   "settings.tab.general.title": "一般",
   "settings.tab.general.description": "このコンピュータでの Dani-Dex の動作を設定します。",
   "settings.tab.computerUse.title": "コンピュータ操作",

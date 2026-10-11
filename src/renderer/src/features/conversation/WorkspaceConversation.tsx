@@ -62,6 +62,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     respondToApprovalRequest,
     respondToBrowserTakeover,
     cancelQueuedMessage,
+    interruptDelivery,
     steerQueuedMessage,
     updateQueuedMessage,
     reorderQueue,
@@ -71,6 +72,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     activeMessages,
     conversations,
     sendMessage,
+    readAgentReplyMessages,
     markAgentMessagesRead,
     loadOlderAgentMessages,
     loadLatestAgentMessages,
@@ -212,6 +214,8 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
       onUpdateAgent={updateAgent}
       onSetAgentAvatar={setAgentAvatar}
       onSendMessage={sendMessage}
+      onReadAgentReplyMessages={readAgentReplyMessages}
+      onInterruptDelivery={interruptDelivery}
       onMarkRead={() => markAgentMessagesRead()}
       onLoadOlder={() => void loadOlderAgentMessages()}
       onLoadLatest={() => (activeAgent() ? loadLatestAgentMessages(activeAgent()?.id ?? "") : Promise.resolve())}

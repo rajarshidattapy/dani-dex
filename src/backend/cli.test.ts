@@ -1,9 +1,9 @@
 // @vitest-environment node
 
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   bundledClaudeExecutable,
   bundledCodexExecutable,
@@ -11,6 +11,7 @@ import {
   bundledOpencodeExecutable,
   CodexCliError,
   cliSpawnTarget,
+  type GrokCliInfo,
   loginShellCommand,
   parseClaudeVersion,
   parseCodexVersion,
@@ -29,14 +30,27 @@ const originalLocalAppData = process.env.LOCALAPPDATA;
 const originalPath = process.env.PATH;
 const originalOpencodePath = process.env.DANI_DEX_OPENCODE_PATH;
 const originalGrokPath = process.env.DANI_DEX_GROK_PATH;
+const originalZdotdir = process.env.ZDOTDIR;
 const temporaryPaths: string[] = [];
+const shellDiscoveries: { pidPath: string; pending: Promise<GrokCliInfo> }[] = [];
 
 afterEach(async () => {
+  for (const { pidPath, pending } of shellDiscoveries.splice(0)) {
+    const pid = Number(await readFile(pidPath, "utf8"));
+    if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error("The shell fixture did not record its owned PID.");
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+    }
+    await pending.catch(() => undefined);
+  }
   restoreEnvironment("APPDATA", originalAppData);
   restoreEnvironment("LOCALAPPDATA", originalLocalAppData);
   restoreEnvironment("PATH", originalPath);
   restoreEnvironment("DANI_DEX_GROK_PATH", originalGrokPath);
   restoreEnvironment("DANI_DEX_OPENCODE_PATH", originalOpencodePath);
+  restoreEnvironment("ZDOTDIR", originalZdotdir);
   await Promise.all(temporaryPaths.splice(0).map((path) => rm(path, { recursive: true })));
 });
 
@@ -160,6 +174,38 @@ describe("login shell discovery", () => {
     expect(loginShellCommand("linux", {})).toEqual({ command: "/bin/sh", args: ["-lc"] });
     expect(loginShellCommand("linux", { SHELL: "  " })).toEqual({ command: "/bin/sh", args: ["-lc"] });
     expect(loginShellCommand("linux", { SHELL: "/bin/sh" })).toEqual({ command: "/bin/sh", args: ["-lc"] });
+  });
+
+  it.runIf(process.platform === "darwin")("ends a blocked login shell before using the managed CLI", async () => {
+    const root = await mkdtemp(join(tmpdir(), "dani-dex-shell-discovery-test-"));
+    temporaryPaths.push(root);
+    const shellState = join(root, "shell-state");
+    const shellPid = join(root, "shell-pid");
+    // Block until the production deadline ends discovery. Teardown also owns the child if this test fails.
+    await writeFile(
+      join(root, ".zshenv"),
+      [
+        `print $$ > "${shellPid}"`,
+        `print waiting > "${shellState}"`,
+        "trap '' TERM",
+        "read -r pending",
+        `print completed > "${shellState}"`,
+        "",
+      ].join("\n"),
+    );
+    process.env.ZDOTDIR = root;
+    delete process.env.DANI_DEX_GROK_PATH;
+    const managed = await createExecutable("managed-grok", "grok 1.0.22");
+
+    const resolution = resolveGrokCli({ bundledExecutable: managed });
+    shellDiscoveries.push({ pidPath: shellPid, pending: resolution });
+    await vi.waitFor(async () => expect(await readFile(shellState, "utf8")).toBe("waiting\n"));
+    await expect(resolution).resolves.toEqual({
+      executable: managed,
+      version: "1.0.22",
+      source: "managed",
+    });
+    expect(await readFile(shellState, "utf8")).toBe("waiting\n");
   });
 });
 

@@ -40,10 +40,14 @@ export function voiceTranscriptionError(error: unknown): string {
 
 export function voiceCallStatusLabel(phase: VoiceCallPhase) {
   switch (phase) {
+    case "preparing":
+      return "Downloading voice model";
     case "connecting":
       return "Connecting...";
     case "listening":
       return "Listening";
+    case "transcribing":
+      return "Transcribing";
     case "thinking":
       return "Working on it";
     case "speaking":

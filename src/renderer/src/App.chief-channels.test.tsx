@@ -24,7 +24,7 @@ async function seedChannel() {
   });
 }
 
-it("hides channel navigation and ignores stored channel selection without deleting its data", async () => {
+it("shows channel navigation without unexpectedly restoring an old selection", async () => {
   await AccountDock.preload();
   await seedChannel();
   const original = await window.danidex.agent.listChannels();
@@ -34,12 +34,12 @@ it("hides channel navigation and ignores stored channel selection without deleti
   );
   render(() => <App />);
   await screen.findByRole("heading", { name: "Chief" });
-  expect(screen.queryByRole("button", { name: /Launch room/ })).not.toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: /Launch room/ })).toBeInTheDocument();
   expect(screen.queryByRole("main", { name: "Channel conversation" })).not.toBeInTheDocument();
   expect(await window.danidex.agent.listChannels()).toEqual(original);
 });
 
-it("blocks direct channel opening while keeping the roster available internally", async () => {
+it("opens a real channel while preserving its records", async () => {
   await seedChannel();
   function Probe() {
     const channels = useChannels();
@@ -60,6 +60,6 @@ it("blocks direct channel opening while keeping the roster available internally"
   ));
   await waitFor(() => expect(screen.getByLabelText("Internal channel count")).toHaveTextContent("1"));
   await fireEvent.click(screen.getByRole("button", { name: "Try opening preserved channel" }));
-  expect(screen.getByLabelText("Selected channel")).toHaveTextContent("none");
+  await waitFor(() => expect(screen.getByLabelText("Selected channel")).toHaveTextContent("channel-preserved"));
   expect(await window.danidex.agent.listChannels()).toHaveLength(1);
 });

@@ -1,3 +1,5 @@
+@import "./voice-listening-indicator.css";
+
 .conversation-panel {
   position: relative;
   display: flex;
@@ -6138,6 +6140,23 @@ button.chat-action-target:active,
   color: var(--dani-dex-text-muted);
   font-size: var(--dani-dex-text-sm);
   white-space: nowrap;
+}
+
+.voice-call-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(45vw, 380px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.voice-call-status .voice-input-wave {
+  flex-shrink: 0;
+}
+.voice-call-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .voice-recording-status {

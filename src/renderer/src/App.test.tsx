@@ -37,15 +37,14 @@ describe("Dani-Dex connected desktop shell", () => {
     toast.dismiss();
   });
 
-  it("restores Chief after remount and hides worker conversations", async () => {
+  it("restores a selected purpose agent after remount and shows its conversation", async () => {
     window.localStorage.setItem(AGENT_SELECTION_STORAGE_KEY, JSON.stringify({ local: "sales-outbound" }));
     const view = render(() => <App />);
-    await screen.findByRole("heading", { name: "Chief" });
-    expect(screen.queryByRole("button", { name: /Sales Outbound, Outbound specialist/ })).not.toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Sales Outbound" });
+    expect(screen.getByRole("button", { name: /Sales Outbound, Outbound specialist/ })).toBeVisible();
     view.unmount();
     render(() => <App />);
-    expect(await screen.findByRole("heading", { name: "Chief" })).toBeVisible();
-    expect(screen.getByRole("button", { name: /Chief, Chief of staff/ })).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByRole("heading", { name: "Sales Outbound" })).toBeVisible();
   });
 
   it("replaces a deleted saved selection with the first available agent", async () => {
@@ -63,7 +62,7 @@ describe("Dani-Dex connected desktop shell", () => {
     expect(JSON.parse(window.localStorage.getItem(AGENT_SELECTION_STORAGE_KEY) ?? "{}")).toEqual({ team: "other" });
   });
 
-  it("keeps a saved selection after a failed load and routes it to Chief on retry", async () => {
+  it("keeps a saved purpose-agent selection after failed load and retry", async () => {
     window.localStorage.setItem(AGENT_SELECTION_STORAGE_KEY, JSON.stringify({ local: "sales-outbound" }));
     vi.mocked(window.danidex.agent.listAgents).mockRejectedValueOnce(new Error("Offline"));
     function LoadStatus() {
@@ -78,7 +77,7 @@ describe("Dani-Dex connected desktop shell", () => {
     await waitFor(() => expect(screen.getByLabelText("Agent load status")).toHaveTextContent("Offline"));
     view.unmount();
     render(() => <App />);
-    expect(await screen.findByRole("heading", { name: "Chief" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Sales Outbound" })).toBeVisible();
   });
 
   it("keeps an explicit agent selection made while the initial list is loading", async () => {
@@ -201,7 +200,9 @@ describe("Dani-Dex connected desktop shell", () => {
     );
     await fireEvent.click(screen.getByRole("button", { name: "Set shell state" }));
     await waitFor(() =>
-      expect(screen.getByRole("status", { name: "shell controller state" })).toHaveTextContent("local|chief|0|360"),
+      expect(screen.getByRole("status", { name: "shell controller state" })).toHaveTextContent(
+        "local|sales-outbound|0|360",
+      ),
     );
 
     const agentSubscriptionCount = vi.mocked(window.danidex.agent.onEvent).mock.calls.length;
@@ -212,7 +213,9 @@ describe("Dani-Dex connected desktop shell", () => {
     expect(screen.queryByRole("status", { name: "shell controller state" })).not.toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Toggle shell view" }));
 
-    expect(screen.getByRole("status", { name: "shell controller state" })).toHaveTextContent("local|chief|0|360");
+    expect(screen.getByRole("status", { name: "shell controller state" })).toHaveTextContent(
+      "local|sales-outbound|0|360",
+    );
     expect(window.danidex.agent.onEvent).toHaveBeenCalledTimes(agentSubscriptionCount);
     expect(window.danidex.auth.onEvent).toHaveBeenCalledTimes(authSubscriptionCount);
     expect(window.danidex.servers.onPresence).toHaveBeenCalledTimes(presenceSubscriptionCount);
@@ -697,7 +700,7 @@ describe("Dani-Dex connected desktop shell", () => {
     await fireEvent.input(input, { target: { value: "research" } });
     const messageResult = await screen.findByRole("option", { name: /Ask @Research to use Sources \(skill\)\./ });
     expect(messageResult).not.toHaveTextContent("research-hidden-id");
-    expect(screen.queryByRole("option", { name: /worker-only result/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /worker-only result/ })).toBeInTheDocument();
     await fireEvent.click(messageResult);
     await screen.findByRole("heading", { name: "Chief" });
     expect(window.danidex.agent.searchConversationMessages).toHaveBeenCalledWith({
@@ -873,7 +876,7 @@ describe("Dani-Dex connected desktop shell", () => {
     expect(await screen.findByText("This approval is no longer active.")).toBeInTheDocument();
   });
 
-  it("keeps a worker exchange visible without entering the worker conversation", async () => {
+  it("opens a selected worker conversation from its exchange", async () => {
     vi.mocked(window.danidex.agent.readConversation).mockImplementation(async (agentId) => ({
       agentId,
       threadId: "thread-1",
@@ -913,7 +916,7 @@ describe("Dani-Dex connected desktop shell", () => {
     await screen.findByRole("heading", { name: "Chief" });
     expect(await screen.findByText("Messaged")).toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Open chat with Sales Outbound" }));
-    expect(await screen.findByRole("heading", { name: "Chief" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Sales Outbound" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Messages with Sales Outbound" })).not.toBeInTheDocument();
   });
 

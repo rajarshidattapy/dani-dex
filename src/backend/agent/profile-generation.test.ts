@@ -154,7 +154,7 @@ import { validateGatewayRoute } from "./profile-generation";
 
 const gatewayRoute = {
   endpoint: "https://api.kilo.ai/api/gateway/chat/completions",
-  modelId: "stepfun/step-3.7-flash:free",
+  modelId: "kilo-auto/free",
 };
 const catalog = {
   data: [
@@ -232,7 +232,7 @@ it("rejects endpoint/model mismatch without network", async () => {
   vi.stubGlobal("fetch", request);
   try {
     await expect(
-      generateGatewayTextWithoutTools({ ...gatewayRoute, modelId: "kilo-auto/free" }, "Synthetic"),
+      generateGatewayTextWithoutTools({ ...gatewayRoute, modelId: "not-permitted" }, "Synthetic"),
     ).rejects.toThrow("not permitted");
     expect(request).not.toHaveBeenCalled();
   } finally {

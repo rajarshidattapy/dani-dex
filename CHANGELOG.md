@@ -8,6 +8,8 @@ All notable changes to Dani-Dex will be documented here. The project follows
 ### Added
 
 - Import reviewed historical context from ChatGPT or Claude during setup or from Memories.
+- Add local duplex voice with Whisper transcription and local system speech.
+- Hold the composer microphone to send on release; cancellation discards unaccepted audio.
 
 ### Fixed
 
@@ -17,6 +19,12 @@ All notable changes to Dani-Dex will be documented here. The project follows
 - Default new agents to Dani Free Auto without an implicit paid-model fallback.
 - Keep unsaved imported context for retry and redact credentials before storage and provider requests.
 - Repair CI setup and regression coverage.
+- Use macOS system speech when Chromium has no installed local voices. Stop owned speech on interruption or
+  renderer loss, and treat embedded speech commands in replies as literal text.
+- Release late microphone requests and ignore cancelled or replaced voice transcripts.
+- Report a missing local voice runtime separately from an unsupported platform.
+- End stalled login-shell CLI discovery at its deadline so chat can finish starting.
+- Confirm sustained speech before interruption so a short microphone impulse does not discard a valid phrase.
 
 ## [0.17.8] - 2026-09-27
 

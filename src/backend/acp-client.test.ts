@@ -1,4 +1,4 @@
-import { AcpAgentClient } from "./acp-client";
+import { AcpAgentClient, correlatedChannelResult } from "./acp-client";
 // @vitest-environment node
 
 /*
@@ -24,7 +24,7 @@ import type { AgentClient } from "./agent-client";
 import type { OpencodeCliInfo } from "./cli";
 import { setRuntimeModelSource } from "./model-source";
 import type { CustomProviderConfig } from "./opencode-config";
-import type { AppServerNotification, AppServerRequest } from "./protocol";
+import type { AppServerNotification, AppServerRequest, ThreadItem } from "./protocol";
 import {
   decodeAccountReadResult,
   decodeModelListResponse,
@@ -123,6 +123,9 @@ function handle(message) {
     const effectLog=process.env.DANI_DEX_FAKE_ACP_EFFECT_LOG;if(effectLog)fs.appendFileSync(effectLog,JSON.stringify({allowed})+NL);
     write({jsonrpc:"2.0",id:pendingPrompt.id,result:{stopReason:allowed?"end_turn":"cancelled"}});return;
   }
+  if (message.method === "session/cancel" && process.env.DANI_DEX_FAKE_ACP_CONFIRM_CANCEL === "1" && pendingPrompt) {
+    write({jsonrpc:"2.0",id:pendingPrompt.id,result:{stopReason:process.env.DANI_DEX_FAKE_ACP_CANCEL_REASON || "cancelled"}});pendingPrompt=null;return;
+  }
   if (typeof message.id === "undefined") return;
   if (message.method === "initialize") {
     const agentCapabilities = process.env.DANI_DEX_FAKE_ACP_LOAD_SESSION === "1" ? { loadSession: true } : {};
@@ -146,6 +149,7 @@ function handle(message) {
     promptCount++;
     if(process.env.DANI_DEX_FAKE_ACP_MISSING_INPUT === "1")write({jsonrpc:"2.0",id:"missing-input",method:"_synthetic_input",params:{question:"unbound"}});
     if(process.env.DANI_DEX_FAKE_ACP_HANG_PRIMARY === "1"&&promptCount===1){
+      pendingPrompt=message;
       if(process.env.DANI_DEX_FAKE_ACP_TIMEOUT_LATE === "1")setTimeout(()=>{
        write({jsonrpc:"2.0",method:"session/update",params:{sessionId:message.params.sessionId,update:{sessionUpdate:"agent_message_chunk",content:{type:"text",text:"LATE PRIMARY"}}}});
        write({jsonrpc:"2.0",id:"late-primary-permission",method:"session/request_permission",params:{sessionId:message.params.sessionId,toolCall:{toolCallId:"late-write",kind:"edit",title:"temp-write",status:"pending"},options:[{optionId:"once",name:"Allow once",kind:"allow_once"}]}});
@@ -1374,3 +1378,243 @@ function completedStatus(events: AppServerNotification[]): string | null {
   if (!event) throw new Error("No completed turn event received");
   return getString(getRecord(event.params, "turn"), "status");
 }
+
+describe("bounded ACP setup", () => {
+  it("fails an unavailable selected model rather than using a different session model", async () => {
+    const fake = await createFakeOpencodeAgent("system");
+    vi.stubEnv("DANI_DEX_FAKE_ACP_CONFIG_MODELS", "1");
+    const client = startOpencode(fake.cli, () => null, fake.envLog);
+    await client.request("initialize", {}, decodeRecordResponse);
+    await expect(
+      client.request("thread/start", { cwd: fake.directory, model: "dani/missing" }, decodeRecordResponse),
+    ).rejects.toThrow("selected model is not available");
+    expect(await fake.readPrompts()).toEqual([]);
+  });
+
+  it("ends hung model selection before dispatch and quarantines the session", async () => {
+    const fake = await createFakeOpencodeAgent("system");
+    vi.stubEnv("DANI_DEX_FAKE_ACP_CONFIG_MODELS", "1");
+    vi.stubEnv("DANI_DEX_FAKE_ACP_CONFIG_HANG", "agent/silent");
+    const client = startOpencode(fake.cli, () => null, fake.envLog, { requestTimeoutMs: 4000 });
+    await client.request("initialize", {}, decodeRecordResponse);
+    const opened = await client.request(
+      "thread/start",
+      { cwd: fake.directory, model: "agent/thinker" },
+      decodeThreadResponse,
+    );
+    await expect(
+      client.request(
+        "turn/start",
+        { threadId: opened.thread.id, model: "agent/silent", input: [{ type: "text", text: "do nothing" }] },
+        decodeRecordResponse,
+      ),
+    ).rejects.toThrow("ACP model setup timed out");
+    await expect(
+      client.request(
+        "turn/start",
+        { threadId: opened.thread.id, model: "agent/thinker", input: [{ type: "text", text: "do nothing" }] },
+        decodeRecordResponse,
+      ),
+    ).rejects.toThrow("quarantined");
+    expect(await fake.readPrompts()).toEqual([]);
+  }, 15000);
+});
+it("keeps retired legacy wire blocked while fresh epoch executes without replay", async () => {
+  const fake = await createFakeOpencodeAgent();
+  vi.stubEnv("DANI_DEX_FAKE_ACP_LOAD_SESSION", "1");
+  vi.stubEnv("DANI_DEX_FAKE_ACP_PROMPT_LOG", fake.promptLog);
+  const records: import("./agent/session-worker-history").WorkerHistoryPayload[] = [
+    { entry: { kind: "retirement", turnId: "old", reason: "deadline" } },
+    { entry: { kind: "terminal", turnId: "old", status: "failed", retiredAttempt: true } },
+  ];
+  const { sessionWorkerHistory } = await import("./agent/session-worker-history");
+  const client = startOpencode(fake.cli, () => null, fake.envLog, {
+    workerHistory: {
+      read: (id) => sessionWorkerHistory(records, id, "persisted-wire"),
+      append: (id, entry) => records.push({ externalSessionId: id, entry }),
+    },
+  });
+  const old = await client.request(
+    "thread/resume",
+    { threadId: "persisted-wire", cwd: tmpdir() },
+    decodeRecordResponse,
+  );
+  await expect(
+    client.request(
+      "turn/start",
+      {
+        threadId: requireThreadId(old),
+        clientUserMessageId: "blocked",
+        input: [{ type: "text", text: "old must not execute" }],
+      },
+      decodeRecordResponse,
+    ),
+  ).rejects.toThrow("Safe recovery");
+  const events: AppServerNotification[] = [];
+  client.on("notification", (event) => events.push(event));
+  const fresh = await client.request("thread/start", { cwd: tmpdir() }, decodeRecordResponse);
+  await client.request(
+    "turn/start",
+    {
+      threadId: requireThreadId(fresh),
+      clientUserMessageId: "fresh",
+      input: [{ type: "text", text: "fresh greeting" }],
+    },
+    decodeRecordResponse,
+  );
+  await vi.waitFor(() => expect(events.some((event) => event.method === "turn/completed")).toBe(true));
+  expect(await fake.readPrompts()).toHaveLength(1);
+  expect(records.filter((record) => record.entry.kind === "retirement")).toHaveLength(1);
+  expect(
+    records.some((record) => record.externalSessionId === requireThreadId(fresh) && record.entry.kind === "terminal"),
+  ).toBe(true);
+});
+
+it("continues a new delivery only after provider-confirmed cancellation, without replay", async () => {
+  const fake = await createFakeOpencodeAgent();
+  vi.stubEnv("DANI_DEX_FAKE_ACP_HANG_PRIMARY", "1");
+  vi.stubEnv("DANI_DEX_FAKE_ACP_CONFIRM_CANCEL", "1");
+  vi.stubEnv("DANI_DEX_FAKE_ACP_PROMPT_LOG", fake.promptLog);
+  const entries: WorkerHistoryEntry[] = [];
+  const client = startOpencode(fake.cli, () => null, fake.envLog, {
+    promptDeadlineMs: 500,
+    workerHistory: { read: () => entries, append: (_id, e) => entries.push(e) },
+  });
+  const opened = await client.request("thread/start", { cwd: tmpdir() }, decodeRecordResponse);
+  const threadId = requireThreadId(opened);
+  const events: AppServerNotification[] = [];
+  client.on("notification", (n) => events.push(n));
+  await client.request(
+    "turn/start",
+    { threadId, clientUserMessageId: "cancelled-one", input: [{ type: "text", text: "original" }] },
+    decodeRecordResponse,
+  );
+  await vi.waitFor(async () => expect((await fake.readPrompts()).length).toBe(1));
+  await client.request("turn/interrupt", { threadId }, decodeRecordResponse);
+  await vi.waitFor(() => expect(events.some((e) => e.method === "turn/completed")).toBe(true));
+  expect(entries.some((e) => e.kind === "cancellation-confirmed" && e.turnId === "cancelled-one")).toBe(true);
+  await client.request(
+    "turn/start",
+    { threadId, clientUserMessageId: "next-one", input: [{ type: "text", text: "new request" }] },
+    decodeRecordResponse,
+  );
+  await vi.waitFor(() => expect(events.filter((e) => e.method === "turn/completed")).toHaveLength(2));
+  expect(await fake.readPrompts()).toHaveLength(2);
+});
+
+it("keeps quarantine when a provider cancellation receipt cannot be persisted", async () => {
+  const fake = await createFakeOpencodeAgent();
+  vi.stubEnv("DANI_DEX_FAKE_ACP_HANG_PRIMARY", "1");
+  vi.stubEnv("DANI_DEX_FAKE_ACP_CONFIRM_CANCEL", "1");
+  vi.stubEnv("DANI_DEX_FAKE_ACP_PROMPT_LOG", fake.promptLog);
+  const entries: WorkerHistoryEntry[] = [];
+  const client = startOpencode(fake.cli, () => null, fake.envLog, {
+    promptDeadlineMs: 500,
+    workerHistory: {
+      read: () => entries,
+      append: (_id, e) => {
+        if (e.kind === "cancellation-confirmed") throw new Error("disk full");
+        entries.push(e);
+      },
+    },
+  });
+  const opened = await client.request("thread/start", { cwd: tmpdir() }, decodeRecordResponse);
+  const threadId = requireThreadId(opened);
+  const events: AppServerNotification[] = [];
+  client.on("notification", (n) => events.push(n));
+  await client.request(
+    "turn/start",
+    { threadId, clientUserMessageId: "a", input: [{ type: "text", text: "original" }] },
+    decodeRecordResponse,
+  );
+  await vi.waitFor(async () => expect((await fake.readPrompts()).length).toBe(1));
+  await client.request("turn/interrupt", { threadId }, decodeRecordResponse);
+  await vi.waitFor(() => expect(events.some((e) => e.method === "turn/completed")).toBe(true));
+  await expect(
+    client.request(
+      "turn/start",
+      { threadId, clientUserMessageId: "b", input: [{ type: "text", text: "new" }] },
+      decodeRecordResponse,
+    ),
+  ).rejects.toThrow("Safe recovery");
+  expect(await fake.readPrompts()).toHaveLength(1);
+});
+
+it("keeps quarantine for an ambiguous provider completion after interruption", async () => {
+  const fake = await createFakeOpencodeAgent();
+  vi.stubEnv("DANI_DEX_FAKE_ACP_HANG_PRIMARY", "1");
+  vi.stubEnv("DANI_DEX_FAKE_ACP_CONFIRM_CANCEL", "1");
+  vi.stubEnv("DANI_DEX_FAKE_ACP_CANCEL_REASON", "end_turn");
+  vi.stubEnv("DANI_DEX_FAKE_ACP_PROMPT_LOG", fake.promptLog);
+  const entries: WorkerHistoryEntry[] = [];
+  const diagnostics: string[] = [];
+  const client = startOpencode(fake.cli, () => null, fake.envLog, {
+    promptDeadlineMs: 500,
+    workerHistory: { read: () => entries, append: (_id, e) => entries.push(e) },
+  });
+  client.on("diagnostic", (line) => diagnostics.push(line));
+  const events: AppServerNotification[] = [];
+  client.on("notification", (e) => events.push(e));
+  const opened = await client.request("thread/start", { cwd: tmpdir() }, decodeRecordResponse);
+  const threadId = requireThreadId(opened);
+  await client.request(
+    "turn/start",
+    { threadId, clientUserMessageId: "ambiguous", input: [{ type: "text", text: "hello" }] },
+    decodeRecordResponse,
+  );
+  await vi.waitFor(async () => expect((await fake.readPrompts()).length).toBe(1));
+  await client.request("turn/interrupt", { threadId }, decodeRecordResponse);
+  await vi.waitFor(() => expect(events.some((e) => e.method === "turn/completed")).toBe(true));
+  expect(entries.some((e) => e.kind === "cancellation-confirmed")).toBe(false);
+  expect(diagnostics.some((line) => line.includes("stopReason=end_turn"))).toBe(true);
+  await expect(
+    client.request(
+      "turn/start",
+      { threadId, clientUserMessageId: "next", input: [{ type: "text", text: "do not replay" }] },
+      decodeRecordResponse,
+    ),
+  ).rejects.toThrow("Safe recovery");
+  expect(await fake.readPrompts()).toHaveLength(1);
+});
+
+it("human approval wait does not consume the provider prompt deadline; denial finishes without quarantine", async () => {
+  const fake = await createFakeOpencodeAgent();
+  vi.stubEnv("DANI_DEX_FAKE_ACP_APPROVAL", "1");
+  const entries: WorkerHistoryEntry[] = [];
+  const client = startOpencode(fake.cli, () => null, fake.envLog, {
+    promptDeadlineMs: 80,
+    workerHistory: { read: () => entries, append: (_id, e) => entries.push(e) },
+  });
+  let approval: AppServerRequest | undefined;
+  const events: AppServerNotification[] = [];
+  client.on("request", (r) => (approval = r));
+  client.on("notification", (n) => events.push(n));
+  const opened = await client.request("thread/start", { cwd: tmpdir() }, decodeRecordResponse);
+  const threadId = requireThreadId(opened);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  await client.request("turn/start", { threadId, input: [{ type: "text", text: "Synthetic" }] }, decodeRecordResponse);
+  await vi.waitFor(() => expect(approval).toBeDefined());
+  try {
+    await vi.advanceTimersByTimeAsync(160);
+  } finally {
+    vi.useRealTimers();
+  }
+  expect(events.some((e) => e.method === "turn/completed")).toBe(false);
+  if (!approval) throw new Error("Missing approval");
+  client.respond(approval.id, { decision: "decline" });
+  await vi.waitFor(() => expect(events.some((e) => e.method === "turn/completed")).toBe(true));
+  expect(entries.some((e) => e.kind === "retirement")).toBe(false);
+  expect(entries.some((e) => e.kind === "item" && e.permission === "denied")).toBe(true);
+});
+it("correlates missing permission input only with exact current-turn call ID and bounded result", () => {
+  const call = { toolCallId: "a", title: "danidex_channel_result", rawInput: {} };
+  const item: ThreadItem = { id: "a", type: "toolCall", name: "danidex_channel_result", arguments: { text: "ready" } };
+  expect(correlatedChannelResult(call, [item])).toEqual({ text: "ready" });
+  expect(correlatedChannelResult(call, [{ ...item, id: "b" }])).toBeNull();
+  expect(correlatedChannelResult({ ...call, title: "other" }, [item])).toBeNull();
+  expect(correlatedChannelResult({ ...call, rawInput: { text: "changed" } }, [item])).toBeNull();
+  for (const arguments_ of [{ text: "" }, { text: "ready", path: "private" }, { text: "x".repeat(100001) }])
+    expect(correlatedChannelResult(call, [{ ...item, arguments: arguments_ }])).toBeNull();
+  expect(correlatedChannelResult(call, [])).toBeNull();
+  expect(correlatedChannelResult({ ...call, rawInput: "malformed" }, [item])).toBeNull();
+});

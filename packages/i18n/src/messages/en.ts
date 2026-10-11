@@ -124,6 +124,8 @@ export const en = {
   "settings.analytics.description":
     "Send usage and reliability metadata with your account ID and email to Dani-Dex’s self-hosted analytics.",
   // The Settings window shell: its tab list, headers and save bar.
+  "settings.tab.hotkey.title": "Hotkey",
+  "settings.tab.hotkey.description": "Choose the key you hold to speak. Release to let Dani get to work.",
   "settings.tab.general.title": "General",
   "settings.tab.general.description": "Control how Dani-Dex behaves on this computer.",
   "settings.tab.computerUse.title": "Computer Use",

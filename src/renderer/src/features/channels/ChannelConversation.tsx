@@ -840,6 +840,7 @@ export function ChannelConversation() {
                   <div class="composer-input-label">
                     <ComposerEditor
                       agentId={undefined}
+                      allowEveryone={true}
                       agents={agentList().filter((agent) =>
                         page().channel.members.some((member) => member.agentId === agent.id),
                       )}

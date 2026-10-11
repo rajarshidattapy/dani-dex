@@ -57,9 +57,6 @@ const Navigation = createSimpleContext({
     } | null>(null);
 
     function selectAgent(agentId: string) {
-      const chief = conversationAgents()[0];
-      if (!chief) return;
-      agentId = chief.id;
       if (agentSetupOpen() && creatingAgent()) return;
       // The rail and the sidebar sit outside the markup the report covers, so a
       // conversation is one click away while the report hides where it opens. Opening
@@ -108,7 +105,7 @@ const Navigation = createSimpleContext({
         const page = await window.danidex.agent.searchConversationMessages({ query, limit: 100 });
         analytics.track("search_action", { scope: "global", result: "succeeded", result_count: page.total });
         return page.results
-          .filter((result) => result.agentId === conversationAgents()[0]?.id)
+          .filter((result) => conversationAgents().some((agent) => agent.id === result.agentId))
           .map((result) => ({
             agentId: result.agentId,
             message: toAgentMessage(result.message, result.agentId),
@@ -125,7 +122,7 @@ const Navigation = createSimpleContext({
     }
 
     async function openAgentMessage(agentId: string, messageId: string): Promise<void> {
-      if (agentId !== conversationAgents()[0]?.id) return;
+      if (!conversationAgents().some((agent) => agent.id === agentId)) return;
       const serverId = activeServerId();
       await Promise.resolve();
       if (!scopeIsCurrent()) return;

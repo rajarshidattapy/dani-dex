@@ -966,7 +966,7 @@ describe("Dani-Dex connected desktop shell", () => {
     await waitFor(() => expect(screen.queryByRole("status", { name: /new messages?/ })).not.toBeInTheDocument());
   });
 
-  it("keeps hidden worker replies unread after focus returns", async () => {
+  it("keeps background worker replies unread after focus returns", async () => {
     const unreadPage = unreadConversationPage("sales-outbound", [
       agentReply("sales-background-answer", "Sales result from the background", "2026-08-19T09:04:00.000Z"),
     ]);
@@ -978,7 +978,7 @@ describe("Dani-Dex connected desktop shell", () => {
     emitAgentEvent?.({ type: "conversation-page", page: unreadPage });
     window.dispatchEvent(new Event("focus"));
 
-    expect(screen.queryByRole("button", { name: /Sales Outbound/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Sales Outbound/ })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Chief" })).toBeInTheDocument();
     expect(window.danidex.agent.markConversationRead).not.toHaveBeenCalled();
     expect(screen.queryByText("Sales result from the background")).not.toBeInTheDocument();
@@ -1050,7 +1050,7 @@ describe("Dani-Dex connected desktop shell", () => {
     expect(await screen.findByRole("status", { name: "1 new message" })).toBeInTheDocument();
   });
 
-  it("keeps Chief readable when a blocked channel open is attempted", async () => {
+  it("restores Chief readability after closing a channel", async () => {
     const unreadPage = unreadConversationPage("chief", [
       agentReply("agent-channel-answer", "Ready while the channel was open", "2026-08-19T09:06:00.000Z"),
     ]);
@@ -1067,8 +1067,8 @@ describe("Dani-Dex connected desktop shell", () => {
     vi.mocked(window.danidex.agent.readConversationPage).mockResolvedValue(unreadPage);
 
     await fireEvent.click(screen.getByRole("button", { name: "Open channel" }));
-    expect(screen.queryByRole("main", { name: "Channel conversation" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Chief" })).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "Close channel" }));
+    await screen.findByRole("heading", { name: "Chief" });
     emitAgentEvent?.({ type: "conversation-page", page: unreadPage });
     expect(await screen.findByText("Ready while the channel was open")).toBeInTheDocument();
     await waitFor(() =>

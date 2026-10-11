@@ -30,6 +30,22 @@ sends visible to the same coverage checks.
 Source coverage tests read the file instead. A service without an Electron dependency can use
 ordinary unit tests; an unnecessary import would force it into the Electron mock setup.
 
+## Local speech
+
+`NativeSpeechService` owns the macOS speech child separately from Whisper transcription.
+`voice:speak-local` accepts bounded text and a request identifier through the trusted IPC group.
+Only the main window's main frame can speak or stop speech. `voice:stop-local` stops only the
+specified identifier. The executable is fixed to `/usr/bin/say`; the renderer cannot select an
+executable, arguments, voice files or output paths. Text is sent on stdin, never through a shell
+or command arguments. Each opening bracket is separated so reply text cannot open an embedded
+speech command, including with overlapping bracket runs.
+
+Speech completion waits for child closure. Replacement, interruption, main-frame navigation,
+renderer loss and app shutdown terminate owned speech; a late stop for an old identifier cannot
+terminate the new reply. Renderer loss does not dispose the service: the replacement renderer can
+speak. Chromium local voices remain available where the browser exposes them. Preview reports
+native speech as unavailable rather than pretending that it played audio.
+
 ## Test harnesses
 
 The remote-server suite once had eight separate socket fakes. Five declared `readonly readyState`,

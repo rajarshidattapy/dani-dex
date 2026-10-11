@@ -1645,8 +1645,8 @@ it("launches an MCP server with this user's own PATH, and lets a configured valu
       return isDynamicRecord(env) ? env : {};
     };
     const path = await loginShellPath();
-    expect(path).toBeTruthy();
-    expect(environment("Filesystem").PATH).toBe(path);
+    // If shell discovery times out, omit PATH so the child inherits the process environment.
+    expect(environment("Filesystem").PATH).toBe(path ?? undefined);
     expect(environment("Own path").PATH).toBe("/only/here");
   } finally {
     await client.stop();

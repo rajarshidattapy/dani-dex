@@ -5,6 +5,8 @@ import type {
   ConversationPageInfo,
   ConversationReadState,
   ConversationSnapshot,
+  QueueDelivery,
+  QueuedMessageReceipt,
 } from "@dani-dex/contracts/ipc";
 import { createEffect, createMemo, createStore, onCleanup } from "solid-js";
 import { desktopAnalytics } from "../../analytics";
@@ -60,6 +62,29 @@ interface ConversationState {
   olderError?: string | null;
   read?: ConversationReadState;
   recentReply?: boolean;
+}
+
+/** Read the complete accepted turn, not a possibly stale or truncated renderer page. */
+export async function readAgentReplyMessages(
+  target: { agentId: string; serverId: string },
+  delivery: QueueDelivery,
+  signal: AbortSignal,
+): Promise<AgentMessage[]> {
+  let anchor: Parameters<typeof window.danidex.agent.readConversationPage>[0]["anchor"] = { type: "latest" };
+  let messages: AgentMessage[] = [];
+  while (!signal.aborted) {
+    const page = await window.danidex.agent.readConversationPage(
+      { agentId: target.agentId, anchor, limit: 50 },
+      target.serverId,
+    );
+    if (signal.aborted) break;
+    const turnMessages = page.messages.filter((message) => message.turnId === delivery.turnId);
+    messages = [...toAgentMessages(turnMessages, target.agentId), ...messages];
+    if (page.messages.some((message) => message.id === delivery.id)) return messages;
+    if (!page.pageInfo.hasOlder || !page.pageInfo.olderCursor) return messages;
+    anchor = { type: "before", cursor: page.pageInfo.olderCursor };
+  }
+  throw new DOMException("Interrupted", "AbortError");
 }
 
 /**
@@ -707,10 +732,10 @@ const Conversation = createSimpleContext({
       attachmentDraftIds: string[],
       replyToMessageId: string | null,
       target?: { agentId: string; serverId: string },
-    ): Promise<boolean> {
+    ): Promise<QueuedMessageReceipt | null> {
       const agentId = target?.agentId ?? activeAgent()?.id;
       const serverId = target?.serverId ?? activeServerId();
-      if (!agentId || (!body.trim() && attachmentDraftIds.length === 0)) return false;
+      if (!agentId || (!body.trim() && attachmentDraftIds.length === 0)) return null;
       return sendMessageToAgent(agentId, body, attachmentDraftIds, replyToMessageId, serverId);
     }
 
@@ -720,7 +745,7 @@ const Conversation = createSimpleContext({
       attachmentDraftIds: string[],
       replyToMessageId: string | null = null,
       serverId = activeServerId(),
-    ): Promise<boolean> {
+    ): Promise<QueuedMessageReceipt | null> {
       const analytics = desktopAnalytics.scope();
       const properties = analyticsAgentProperties(agentId);
       try {
@@ -746,7 +771,7 @@ const Conversation = createSimpleContext({
         } catch (error) {
           appendUiError(agentId, error, "Read state failed", serverId);
         }
-        return true;
+        return receipt;
       } catch (error) {
         analytics.track("message_send", {
           ...(properties ?? {}),
@@ -757,7 +782,7 @@ const Conversation = createSimpleContext({
           failure_code: "send_failed",
         });
         appendUiError(agentId, error, "Send failed", serverId);
-        return false;
+        return null;
       }
     }
 
@@ -886,6 +911,7 @@ const Conversation = createSimpleContext({
       clearRecentReply,
       searchAgentMessages,
       sendMessage,
+      readAgentReplyMessages,
       markAgentMessagesRead,
       presentPromptResolution,
       setTeamTyping: notifyTeamTyping,

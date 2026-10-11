@@ -299,3 +299,20 @@ describe("secure authentication card", () => {
     expect(screen.getByLabelText("Password")).toHaveValue("");
   });
 });
+
+it("shows an explicit local group-result scope and allows only this publication", async () => {
+  const approve = vi.fn(async () => true);
+  render(() => (
+    <ApprovalCard
+      approval={{ ...approval, kind: "permissions", channelResult: { text: "Result ready" } }}
+      onApprove={approve}
+      onReject={vi.fn(async () => true)}
+      onAlwaysAllow={vi.fn(async () => true)}
+    />
+  ));
+  expect(screen.getByText(/no file, network/)).toBeInTheDocument();
+  expect(screen.getByText("Result ready")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Always allow" })).toBeNull();
+  await fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
+  expect(approve).toHaveBeenCalledOnce();
+});

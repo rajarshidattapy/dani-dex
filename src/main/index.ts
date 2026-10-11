@@ -326,6 +326,8 @@ function registerIpcHandlers(
     customProviders,
     marketplaceAgents,
     voice,
+    voiceActivity,
+    nativeSpeech,
     dynamicIsland,
     cuaDriver,
     computerUsePermissionHelp,
@@ -383,6 +385,9 @@ function registerIpcHandlers(
     ...voiceIpcHandlers({
       codex: codexVoice,
       voice,
+      activity: voiceActivity,
+      speech: nativeSpeech,
+      mainRendererId: () => getMainWindow()?.webContents.id ?? null,
       realtime: new OpenAiRealtimeSessionService(providerCredentials),
       credentials: providerCredentials,
     }),

@@ -1,4 +1,4 @@
-import type { DraftAttachment, QueueDelivery } from "@dani-dex/contracts/ipc";
+import type { DraftAttachment, QueueDelivery, QueuedMessageReceipt } from "@dani-dex/contracts/ipc";
 import { isQueueEditRejected, TEAM_QUEUE_EDIT_CAPABILITY } from "@dani-dex/contracts/team-protocol/queue-edit-v1";
 import { errorMessage } from "../../../error-message";
 import { expandComposerMentions } from "../ComposerEditor";
@@ -483,38 +483,48 @@ export function createComposerActions(deps: ComposerActionsDeps) {
     );
   }
 
-  async function submitMessage(
+  async function sendDraft(
     draftOverride?: ComposerDraft,
     targetOverride?: ConversationTarget,
     submittedSnapshot?: ComposerDraft,
-  ): Promise<boolean> {
-    if (deps.selectionSending() || deps.attachmentBusy()) return false;
-    if (!draftOverride && deps.currentEditingDeliveryId()) {
-      return saveQueuedMessageEdit();
-    }
+  ): Promise<QueuedMessageReceipt | null> {
+    if (deps.selectionSending() || deps.attachmentBusy()) return null;
     const agentId = targetOverride?.agentId ?? deps.props.agent?.id;
     const target = targetOverride ?? (agentId ? { agentId, serverId: deps.props.server?.id ?? "local" } : undefined);
     const draft = draftOverride ?? deps.currentDraft();
     const text = expandComposerMentions(draft.text);
     const attachments = draft.attachments;
-    if (!agentId || !target || deps.submitting() || (!text.trim() && attachments.length === 0)) return false;
+    if (!agentId || !target || deps.submitting() || (!text.trim() && attachments.length === 0)) return null;
     stopTeamTyping();
     deps.setStickToLatest(true);
     deps.setSubmitting(true);
     deps.setComposerError(null, target);
-    const sent = await deps.props.onSendMessage(
-      text,
-      attachments.map((item) => item.id),
-      draft.replyToMessageId,
-      target,
-    );
-    deps.setSubmitting(false);
+    let sent: QueuedMessageReceipt | null;
+    try {
+      sent = await deps.props.onSendMessage(
+        text,
+        attachments.map((item) => item.id),
+        draft.replyToMessageId,
+        target,
+      );
+    } finally {
+      deps.setSubmitting(false);
+    }
     if (sent) {
       deps.clearConversationError(target);
       if (submittedSnapshot) deps.clearSubmittedDraft(target, submittedSnapshot);
       else deps.setDrafts((current) => ({ ...current, [composerDraftKey(target)]: EMPTY_DRAFT }));
     }
     return sent;
+  }
+
+  async function submitMessage(
+    draftOverride?: ComposerDraft,
+    targetOverride?: ConversationTarget,
+    submittedSnapshot?: ComposerDraft,
+  ): Promise<boolean> {
+    if (!draftOverride && deps.currentEditingDeliveryId()) return saveQueuedMessageEdit();
+    return Boolean(await sendDraft(draftOverride, targetOverride, submittedSnapshot));
   }
 
   function submitComposer(): void {
@@ -563,7 +573,7 @@ export function createComposerActions(deps: ComposerActionsDeps) {
     }
     deps.setSelectionSending(true);
     try {
-      return await deps.props.onSendMessage(body, [], messageId);
+      return Boolean(await deps.props.onSendMessage(body, [], messageId));
     } finally {
       deps.setSelectionSending(false);
     }
@@ -580,6 +590,7 @@ export function createComposerActions(deps: ComposerActionsDeps) {
     saveQueuedMessageEdit,
     reorderPresentedQueue,
     submitMessage,
+    sendDraft,
     submitComposer,
     sendSelectionInstruction,
   };

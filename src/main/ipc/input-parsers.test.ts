@@ -324,7 +324,7 @@ describe("app IPC input parsing", () => {
 describe("voice IPC input parsing", () => {
   it("accepts canonical 16 kHz mono PCM WAV audio", () => {
     const audio = voiceWav(8);
-    expect(parseVoiceTranscription({ audio })).toEqual({ audio });
+    expect(parseVoiceTranscription({ id: "voice-test", audio })).toEqual({ id: "voice-test", audio });
   });
 
   it("rejects malformed and oversized voice audio", () => {

@@ -775,6 +775,7 @@ export function createMockDaniDex(options: MockDaniDexOptions = {}): MockDaniDex
     },
     openUrl: async () => undefined,
     voice: {
+      requestMicrophoneAccess: async () => true,
       codexStatus: async () => ({ connected: false }),
       codexConnect: async () => {
         throw new Error("Experimental voice login is not available in preview.");
@@ -786,6 +787,18 @@ export function createMockDaniDex(options: MockDaniDexOptions = {}): MockDaniDex
       getModelStatus: async () => ({ phase: "ready", progress: 100, message: null }),
       prepareModel: async () => ({ phase: "ready", progress: 100, message: null }),
       transcribe: async () => ({ text: "Mock voice transcript" }),
+      cancelTranscription: async () => undefined,
+      startLocalDetection: async () => {
+        throw new Error("Local speech detection is not available in preview.");
+      },
+      detectLocalSpeech: async () => {
+        throw new Error("Local speech detection is not available in preview.");
+      },
+      stopLocalDetection: async () => undefined,
+      speakLocal: async () => {
+        throw new Error("Native local speech is not available in preview.");
+      },
+      stopLocal: async () => undefined,
       createRealtimeSession: async () => {
         throw new Error("Realtime voice is not available in the preview.");
       },

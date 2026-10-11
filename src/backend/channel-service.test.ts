@@ -87,6 +87,61 @@ async function send(text: string, recipientAgentId: string | null = "agent-a") {
   return required(service.store.tasks("channel-1")[0]);
 }
 describe("shared channel coordination", () => {
+  it("validates result-publication scope only for the current running assignment", async () => {
+    const task = await send("Reply once");
+    const assignment = required(service.store.assignments("channel-1")[0]);
+    service.store.update(service.store.get("channel-1"), {
+      assignments: [{ ...assignment, state: "running", turnId: "result-turn" }],
+      tasks: [{ ...task, state: "running" }],
+    });
+    expect(service.hasActiveResultScope("agent-a", "result-turn")).toBe(true);
+    expect(service.hasActiveResultScope("agent-b", "result-turn")).toBe(false);
+    expect(service.hasActiveResultScope("agent-a", "other-turn")).toBe(false);
+  });
+
+  it("broadcasts @everyone as one request with a task per available member", async () => {
+    const op = operationId();
+    const command = {
+      type: "send" as const,
+      channelId: "channel-1",
+      operationId: op,
+      text: "@everyone Reply with your role.",
+      recipientAgentId: null,
+      replyToMessageId: null,
+      attachmentDraftIds: [],
+    };
+    await service.command(command, actor);
+    await service.command(command, actor);
+    const tasks = service.store.tasks("channel-1");
+    expect(tasks).toHaveLength(2);
+    expect(tasks.map((t) => t.ownerAgentId).sort()).toEqual(["agent-a", "agent-b"]);
+    expect(tasks.every((t) => t.instruction === "Reply with your role.")).toBe(true);
+    expect(new Set(tasks.map((t) => t.requestMessageId)).size).toBe(1);
+    expect(service.store.messages("channel-1").filter((m) => m.author.kind === "member")).toHaveLength(1);
+    expect(generate).not.toHaveBeenCalled();
+  });
+  it("does not broadcast @everyone inside a sentence", async () => {
+    await send("Explain what @everyone means.", "agent-a");
+    expect(service.store.tasks("channel-1")).toHaveLength(1);
+  });
+  it("rejects an empty @everyone request without creating tasks", async () => {
+    await expect(
+      service.command(
+        {
+          type: "send",
+          channelId: "channel-1",
+          operationId: operationId(),
+          text: "@everyone",
+          recipientAgentId: null,
+          replyToMessageId: null,
+          attachmentDraftIds: [],
+        },
+        actor,
+      ),
+    ).rejects.toThrow("Write a message");
+    expect(service.store.tasks("channel-1")).toHaveLength(0);
+  });
+
   it("addresses one member and keeps the agent normal thread and provider session", async () => {
     const threadId = await data.store.ensureThreadId("agent-a");
     data.store.bindProviderSession("agent-a", "normal-provider-session");

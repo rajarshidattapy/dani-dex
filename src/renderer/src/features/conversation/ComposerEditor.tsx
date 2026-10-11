@@ -21,6 +21,7 @@ import { AttachmentReferenceVisual, appendAttachmentReferenceVisual } from "./At
 
 interface ComposerEditorProps {
   agentId: string | undefined;
+  allowEveryone?: boolean;
   agents: AgentProfile[];
   skills?: InstalledSkill[];
   /** The host's MCP servers, offered by the same `$` the skills answer. */
@@ -66,30 +67,35 @@ export function expandComposerMentions(value: string): string {
 }
 
 type PickerOption =
+  | { type: "everyone" }
   | { type: "agent"; agent: AgentProfile }
   | { type: "skill"; skill: InstalledSkill }
   | { type: "mcp"; server: McpServerConfig }
   | { type: "attachment"; attachment: DraftAttachment };
 
 function pickerOptionKey(option: PickerOption): string {
+  if (option.type === "everyone") return "everyone";
   if (option.type === "agent") return `agent:${option.agent.id}`;
   if (option.type === "skill") return `skill:${option.skill.skillId}`;
   return option.type === "mcp" ? `mcp:${option.server.id}` : `attachment:${option.attachment.id}`;
 }
 
 function pickerOptionText(option: PickerOption): string {
+  if (option.type === "everyone") return "@everyone All agents in this room";
   if (option.type === "agent") return `${option.agent.name} Agent`;
   if (option.type === "skill") return `${option.skill.name} Skill`;
   return option.type === "mcp" ? `${option.server.name} MCP server` : `${option.attachment.name} File`;
 }
 
 function pickerOptionName(option: PickerOption): string {
+  if (option.type === "everyone") return "@everyone";
   if (option.type === "agent") return option.agent.name;
   if (option.type === "skill") return option.skill.name;
   return option.type === "mcp" ? option.server.name : option.attachment.name;
 }
 
 function pickerOptionDescription(option: PickerOption): string | undefined {
+  if (option.type === "everyone") return "All agents in this room";
   if (option.type === "attachment") return formatFileSize(option.attachment.size);
   if (option.type === "skill") return skillDescription(option.skill);
   if (option.type === "mcp") return mcpServerDescription(option.server);
@@ -115,6 +121,7 @@ function measurePickerFrame(editor: HTMLElement): PickerFrame {
  * is a skill, so the badge names only the source.
  */
 function pickerOptionBadge(option: PickerOption): { label: string; icon: typeof Puzzle } {
+  if (option.type === "everyone") return { label: "All", icon: Bot };
   if (option.type === "agent") return { label: "Agent", icon: Bot };
   if (option.type === "attachment") return { label: "File", icon: File };
   if (option.type === "mcp") return { label: "MCP", icon: Plug };
@@ -185,7 +192,9 @@ export function ComposerEditor(props: ComposerEditorProps) {
         ...matchingMcpServers().map((server) => ({ type: "mcp" as const, server })),
       ];
     if (trigger !== "@") return [];
+    const query = mention()?.query.trim().toLocaleLowerCase() ?? "";
     return [
+      ...(props.allowEveryone && (!query || "everyone".includes(query)) ? [{ type: "everyone" as const }] : []),
       ...matchingAgents().map((agent) => ({ type: "agent" as const, agent })),
       ...matchingAttachments().map((attachment) => ({
         type: "attachment" as const,
@@ -361,13 +370,15 @@ export function ComposerEditor(props: ComposerEditorProps) {
     if (!range) return;
     range.deleteContents();
     const token =
-      option.type === "agent"
-        ? createMentionToken(option.agent)
-        : option.type === "skill"
-          ? createSkillToken(option.skill)
-          : option.type === "mcp"
-            ? createMcpToken(option.server)
-            : createAttachmentToken(option.attachment, attachmentTokenActions);
+      option.type === "everyone"
+        ? document.createTextNode("@everyone")
+        : option.type === "agent"
+          ? createMentionToken(option.agent)
+          : option.type === "skill"
+            ? createSkillToken(option.skill)
+            : option.type === "mcp"
+              ? createMcpToken(option.server)
+              : createAttachmentToken(option.attachment, attachmentTokenActions);
     const trailingSpace = document.createTextNode(" ");
     range.insertNode(trailingSpace);
     range.insertNode(token);
@@ -679,7 +690,11 @@ export function ComposerEditor(props: ComposerEditorProps) {
                     }}
                     onMouseEnter={() => setActiveOption(optionIndex())}
                   >
-                    {option.type === "agent" ? (
+                    {option.type === "everyone" ? (
+                      <span class="mention-picker-skill-icon" aria-hidden="true">
+                        <Bot />
+                      </span>
+                    ) : option.type === "agent" ? (
                       <AgentAvatar agent={option.agent} />
                     ) : option.type === "skill" ? (
                       <span class="mention-picker-skill-icon" aria-hidden="true">

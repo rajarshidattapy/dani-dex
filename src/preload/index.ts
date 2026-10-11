@@ -976,9 +976,16 @@ const danidexApi: DaniDexDesktopApi = {
     codexConnect: () => ipcRenderer.invoke(IPC_CHANNELS.codexVoiceConnect),
     codexStart: (input) => ipcRenderer.invoke(IPC_CHANNELS.codexVoiceStart, input),
     codexStop: () => ipcRenderer.invoke(IPC_CHANNELS.codexVoiceStop),
+    requestMicrophoneAccess: () => ipcRenderer.invoke(IPC_CHANNELS.voiceRequestMicrophoneAccess),
     getModelStatus: () => ipcRenderer.invoke(IPC_CHANNELS.voiceGetModelStatus),
     prepareModel: () => ipcRenderer.invoke(IPC_CHANNELS.voicePrepareModel),
     transcribe: (input) => ipcRenderer.invoke(IPC_CHANNELS.voiceTranscribe, input),
+    cancelTranscription: (id) => ipcRenderer.invoke(IPC_CHANNELS.voiceCancelTranscription, id),
+    startLocalDetection: (id) => ipcRenderer.invoke(IPC_CHANNELS.voiceStartLocalDetection, id),
+    detectLocalSpeech: (input) => ipcRenderer.invoke(IPC_CHANNELS.voiceDetectLocalSpeech, input),
+    stopLocalDetection: (id) => ipcRenderer.invoke(IPC_CHANNELS.voiceStopLocalDetection, id),
+    speakLocal: (input) => ipcRenderer.invoke(IPC_CHANNELS.voiceSpeakLocal, input),
+    stopLocal: (id) => ipcRenderer.invoke(IPC_CHANNELS.voiceStopLocal, id),
     createRealtimeSession: () => ipcRenderer.invoke(IPC_CHANNELS.voiceCreateRealtimeSession),
     setRealtimeApiKey: (key) => ipcRenderer.invoke(IPC_CHANNELS.voiceSetRealtimeApiKey, key),
     clearRealtimeApiKey: () => ipcRenderer.invoke(IPC_CHANNELS.voiceClearRealtimeApiKey),
@@ -1155,16 +1162,19 @@ const danidexApi: DaniDexDesktopApi = {
     sendMessage: (input, serverId = selectedServerId) =>
       invokeAgentForServer(serverId, IPC_CHANNELS.agentSendMessage, input, decodeReceipt),
     setMessageReaction: (input) => invokeAgent(IPC_CHANNELS.agentSetMessageReaction, input, decodeVoid),
-    listQueue: (agentId) => invokeAgent(IPC_CHANNELS.agentListQueue, agentId, decodeQueue),
+    listQueue: (agentId, serverId = selectedServerId) =>
+      invokeAgentForServer(serverId, IPC_CHANNELS.agentListQueue, agentId, decodeQueue),
     acknowledgeFailedTurn: (input) => invokeAgent(IPC_CHANNELS.agentAcknowledgeFailedTurn, input, decodeVoid),
-    cancelQueuedMessage: (input) => invokeAgent(IPC_CHANNELS.agentCancelQueuedMessage, input, decodeVoid),
+    cancelQueuedMessage: (input, serverId = selectedServerId) =>
+      invokeAgentForServer(serverId, IPC_CHANNELS.agentCancelQueuedMessage, input, decodeVoid),
     steerQueuedMessage: (input) => invokeAgent(IPC_CHANNELS.agentSteerQueuedMessage, input, decodeVoid),
     editQueuedMessage: (input, serverId = selectedServerId) =>
       invokeAgentForServer(serverId, IPC_CHANNELS.agentEditQueuedMessage, input, decodeQueue),
     updateQueuedMessage: (input, serverId = selectedServerId) =>
       invokeAgentForServer(serverId, IPC_CHANNELS.agentUpdateQueuedMessage, input, decodeVoid),
     reorderQueue: (input) => invokeAgent(IPC_CHANNELS.agentReorderQueue, input, decodeVoid),
-    interrupt: (input) => invokeAgent(IPC_CHANNELS.agentInterrupt, input, decodeVoid),
+    interrupt: (input, serverId = selectedServerId) =>
+      invokeAgentForServer(serverId, IPC_CHANNELS.agentInterrupt, input, decodeVoid),
     respondToPrompt: (input) => invokeAgent(IPC_CHANNELS.agentRespondToPrompt, input, decodeVoid),
     respondToApproval: (input) => invokeAgent(IPC_CHANNELS.agentRespondToApproval, input, decodeVoid),
     respondToBrowserSecret: (input) => invokeAgent(IPC_CHANNELS.agentRespondToBrowserSecret, input, decodeVoid),

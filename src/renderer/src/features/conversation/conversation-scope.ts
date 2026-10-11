@@ -10,6 +10,8 @@ import {
   useContext,
 } from "solid-js";
 import { createScopeGuard } from "../../scope-lifetime";
+import { waitForAgentReply } from "../voice-call/agent-reply";
+import { speakWithNativeSpeech } from "../voice-call/local-voice-transport";
 import { createVoiceCallStore } from "../voice-call/voice-call-store";
 import { EMPTY_DRAFT } from "./composer-draft";
 import { useConversationController } from "./conversation-controller-context";
@@ -327,6 +329,12 @@ export function createConversationViewScope(props: ConversationProps) {
     setActiveChatSearchIndex,
   });
   const { closeChatSearch, moveChatSearch, handleChatSearchShortcut, setChatSearchInputElement } = search;
+  let voiceReply: AbortController | undefined;
+  onCleanup(() => voiceReply?.abort());
+  createEffect(
+    () => ({ agentId: props.agent?.id, serverId: props.server?.id ?? "local" }),
+    () => voiceReply?.abort(),
+  );
   const voice = createVoiceStore({
     props,
     resources,
@@ -345,16 +353,57 @@ export function createConversationViewScope(props: ConversationProps) {
     viewIsMounted,
     hooks: {
       saveEdit: (...args) => actions.saveQueuedMessageEdit(...args),
-      submit: (...args) => actions.submitMessage(...args),
+      submit: async (draft, target, snapshot) => {
+        if (!target) return false;
+        const receipt = await actions.sendDraft(draft, target, snapshot);
+        const delivery = receipt?.deliveries.find((item) => item.recipientAgentId === target.agentId);
+        if (!delivery) return false;
+        voiceReply?.abort();
+        const controller = new AbortController();
+        voiceReply = controller;
+        const deadline = setTimeout(() => controller.abort(), 120_000);
+        void waitForAgentReply(
+          {
+            deliveries: () => props.queue?.deliveries ?? [],
+            readMessages: (accepted, signal) => props.onReadAgentReplyMessages(target, accepted, signal),
+          },
+          delivery.id,
+          controller.signal,
+        )
+          .then((reply) => speakWithNativeSpeech(reply, controller.signal))
+          .catch((error) => {
+            if (!controller.signal.aborted)
+              setConversationError(target, error instanceof Error ? error.message : "Could not speak the reply.");
+          })
+          .finally(() => {
+            clearTimeout(deadline);
+            if (voiceReply === controller) voiceReply = undefined;
+          });
+        return true;
+      },
       restoreTranscript: (...args) => composer.restoreVoiceTranscript(...args),
     },
   });
-  const { startVoiceRecording, stopVoiceRecording } = voice;
+  const { startVoiceRecording, stopVoiceRecording, cancelVoiceRecording } = voice;
   const voiceCall = createVoiceCallStore({
     target: () => (props.agent ? { agentId: props.agent.id, serverId: props.server?.id ?? "local" } : undefined),
-    messages: () => props.messages,
-    activeTurnId: () => props.activeTurnId,
-    submit: (text, target) => actions.submitMessage({ ...EMPTY_DRAFT, text }, target),
+    deliveries: () => props.queue?.deliveries ?? [],
+    failure: () => {
+      const provider = props.agentStatus.providers?.find((item) => item.id === props.agent?.provider);
+      if (provider?.state === "error") return provider.message ?? "The agent provider stopped.";
+      if (props.agentStatus.phase === "stopped") return props.agentStatus.message ?? "The agent provider stopped.";
+      return null;
+    },
+    readMessages: (target, delivery, signal) => props.onReadAgentReplyMessages(target, delivery, signal),
+    submit: (text, target) => actions.sendDraft({ ...EMPTY_DRAFT, text }, target),
+    interrupt: (deliveryId, target) => props.onInterruptDelivery(deliveryId, target),
+    holdDraft: (text, target) => {
+      const key = composerDraftKey(target);
+      setDrafts((current) => {
+        const existing = current[key] ?? EMPTY_DRAFT;
+        return { ...current, [key]: { ...existing, text: existing.text ? `${existing.text}\n${text}` : text } };
+      });
+    },
   });
   const actions = createComposerActions({
     props,
@@ -1136,6 +1185,7 @@ export function createConversationViewScope(props: ConversationProps) {
     showScrollToLatest,
     startVoiceRecording,
     stopVoiceRecording,
+    cancelVoiceRecording,
     ...voiceCall,
     submitComposer,
     submitting,

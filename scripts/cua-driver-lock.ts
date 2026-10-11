@@ -161,10 +161,11 @@ export function cuaDriverTarget(
   platform: string = process.platform,
   architecture: string = process.arch,
 ): CuaDriverTarget {
+  const directoryArchitecture = platform === "darwin" && architecture === "x64" ? "arm64" : architecture;
   const target = cuaDriverTargets.find(
     (candidate) =>
       CUA_DRIVER_TARGETS[candidate].platform === platform &&
-      CUA_DRIVER_TARGETS[candidate].architecture === architecture,
+      CUA_DRIVER_TARGETS[candidate].architecture === directoryArchitecture,
   );
   if (!target) throw new Error(`Unsupported cua-driver target: ${platform}-${architecture}.`);
   return target;

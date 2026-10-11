@@ -12,6 +12,8 @@ import { createSmoothHeightResize } from "./createSmoothHeightResize";
 
 interface QueuePanelProps {
   deliveries: QueueDelivery[];
+  /** Finalized microphone text that has not been sent to the backend. */
+  waitingVoiceLines?: readonly string[];
   /** Why the queue is waiting, when the cause is not a turn this conversation can show. */
   hold?: QueueHold | null;
   agents?: AgentProfile[];
@@ -558,6 +560,23 @@ export function QueuePanel(props: QueuePanelProps) {
                   </fieldset>
                 );
               }}
+            </For>
+            <For each={props.waitingVoiceLines ?? []}>
+              {(text, index) => (
+                <fieldset
+                  class="agent-queue-item"
+                  data-voice-queued="true"
+                  draggable="false"
+                  aria-label={`Queued voice message ${index() + 1}: ${text}`}
+                >
+                  <span class="agent-queue-icon" aria-hidden="true">
+                    <QueueIcon />
+                  </span>
+                  <span class="agent-queue-message" title={text}>
+                    {text}
+                  </span>
+                </fieldset>
+              )}
             </For>
           </div>
         </div>

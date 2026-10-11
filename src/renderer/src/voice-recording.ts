@@ -22,6 +22,14 @@ export async function recordingToWav(recording: Blob): Promise<Uint8Array> {
   }
 }
 
+export function pcmToWhisperWav(samples: Float32Array, sourceRate: number): Uint8Array {
+  const resampled = resample(samples, sourceRate, VOICE_AUDIO_LIMITS.sampleRate);
+  if (resampled.length > VOICE_AUDIO_LIMITS.sampleRate * VOICE_AUDIO_LIMITS.maximumSeconds) {
+    throw new Error("Voice recordings are limited to two minutes.");
+  }
+  return encodePcmWav(resampled, VOICE_AUDIO_LIMITS.sampleRate);
+}
+
 export function encodePcmWav(samples: Float32Array, sampleRate: number): Uint8Array {
   const output = new Uint8Array(44 + samples.length * 2);
   const view = new DataView(output.buffer);

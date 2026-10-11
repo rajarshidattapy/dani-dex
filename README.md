@@ -17,7 +17,6 @@ Click your platform and the installer downloads right away, always the newest re
 
 [![CI](https://github.com/somdipto/dani-dex/actions/workflows/ci.yml/badge.svg)](https://github.com/somdipto/dani-dex/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/somdipto/dani-dex?label=latest)](https://github.com/somdipto/dani-dex/releases/latest)
-[![License](https://img.shields.io/badge/license-PolyForm_Noncommercial_1.0.0-blue.svg)](LICENSE)
 
 ## What you can get done
 
@@ -127,18 +126,13 @@ in the [development guide](docs/DEVELOPMENT.md). See also [ARCHITECTURE.md](docs
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). By contributing, you agree that your contribution is licensed
-under PolyForm Noncommercial 1.0.0. Community behavior is governed by the
+See [CONTRIBUTING.md](CONTRIBUTING.md). Community behavior is governed by the
 [Code of Conduct](CODE_OF_CONDUCT.md).
 
-## License and attribution
+## Upstream and third-party notices
 
-Copyright 2026 Norbert Bodziony.
-
-Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). You may use, modify, and
-distribute the code for permitted noncommercial purposes. Commercial use requires a separate license
-from the copyright owner. Versions up to and including 0.1.11 remain available under Apache-2.0.
-See [NOTICE](NOTICE) for attribution and third-party notices.
+The retained upstream license is in [LICENSE](LICENSE). Required upstream attribution and
+third-party notices are in [NOTICE](NOTICE). Rebranding does not change these terms.
 
 Dani-Dex is an independent source-available project and is not affiliated with, endorsed by, or
 sponsored by OpenAI. OpenAI, ChatGPT, and Codex are used only to describe compatibility with their

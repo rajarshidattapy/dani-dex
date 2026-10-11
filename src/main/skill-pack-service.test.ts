@@ -111,6 +111,7 @@ describe("SkillPackService", () => {
       bundledRoot: resolve(__dirname, "../../resources/skill-packs"),
       cacheRoot: await tempRoot(),
       fetch: vi.fn(async () => new Response(karpathy)),
+      packs: (kind) => (kind === "technical" ? packs() : []),
     });
     await service.syncAgent(agent(workspace, "Engineer"));
     await writeFile(join(workspace, ".specify/memory/constitution.md"), "Our rules");

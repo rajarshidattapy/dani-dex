@@ -4,7 +4,7 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentEvent } from "@dani-dex/contracts/ipc";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEVELOPMENT_DEFAULT_MODEL, DEVELOPMENT_DEFAULT_REASONING_EFFORT } from "./agent/development-defaults";
+import { DEVELOPMENT_DEFAULT_MODEL } from "./agent/development-defaults";
 import type { AgentProvider } from "./agent-client";
 import type { AgentService } from "./agent-service";
 import {
@@ -303,7 +303,7 @@ describe.sequential("AgentService: queue", () => {
     await expect(service.createAgent(CREATE_AGENT_INPUT)).resolves.toMatchObject({
       provider: "opencode",
       model: DEVELOPMENT_DEFAULT_MODEL,
-      reasoningEffort: DEVELOPMENT_DEFAULT_REASONING_EFFORT,
+      reasoningEffort: "medium",
     });
   });
 
@@ -323,14 +323,19 @@ describe.sequential("AgentService: queue", () => {
 
     // Same catalog, no development build: the built-in default stands.
     await expect(service.createAgent(CREATE_AGENT_INPUT)).resolves.toMatchObject({
-      provider: "codex",
-      model: "gpt-5.6-luna",
+      provider: "opencode",
+      model: DEVELOPMENT_DEFAULT_MODEL,
     });
 
-    // And a provider the developer chose is theirs, development build or not.
+    // An explicit creation request overrides the built-in Dani Free default.
     await service.setPreferredProvider("claude");
     await expect(
-      service.createAgent({ ...CREATE_AGENT_INPUT, name: "Chosen Agent", avatarSeed: "setup:chosen" }),
+      service.createAgent({
+        ...CREATE_AGENT_INPUT,
+        name: "Chosen Agent",
+        avatarSeed: "setup:chosen",
+        provider: "claude",
+      }),
     ).resolves.toMatchObject({
       provider: "claude",
       model: "claude-sonnet-5",

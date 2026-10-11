@@ -296,6 +296,30 @@ export class ChannelService {
       const current = committed ? this.store.get(channel.id) : channel;
       if (current.archived) throw new Error("Restore this channel before sending messages or changing tasks.");
       const text = committed?.text ?? command.text;
+      // A leading @everyone creates an independently owned task for each live member.
+      // Resource locks still serialize host work, while every member gets the request.
+      if (/^@everyone(?:\s|$)/iu.test(text.trim())) {
+        const members = this.eligibleMembers(current);
+        if (!members.length) throw new Error("No available agents in this channel.");
+        const instruction = text.trim().replace(/^@everyone\s*/iu, "");
+        if (!instruction.trim() && !committed?.attachments.length) throw new Error("Write a message after @everyone.");
+        if (
+          command.replyToMessageId &&
+          !this.store.messages(current.id).some((item) => item.id === command.replyToMessageId)
+        ) {
+          throw new Error("The referenced channel message is unavailable.");
+        }
+        const tasks = members.map((agentId) => this.newTask(current.id, id, instruction, agentId));
+        const firstTask = tasks[0];
+        if (!firstTask) throw new Error("A channel recipient is required.");
+        const message = this.message(current.id, firstTask.id, { kind: "member", ...actor }, text, id);
+        message.message.replyToMessageId = command.replyToMessageId;
+        if (committed) message.message.attachments = committed.attachments;
+        const result = this.store.update(current, { messages: [message], tasks }, operationId);
+        this.publish(current.id);
+        this.wake(current.id);
+        return result;
+      }
       const messages = this.store.messages(current.id);
       const referenced = command.replyToMessageId
         ? messages.find((message) => message.id === command.replyToMessageId)
@@ -1187,6 +1211,19 @@ export class ChannelService {
     this.resolveAssignmentTerminal(assignment.id);
     this.publish(channelId);
     this.#releaseHeldAgents();
+  }
+
+  hasActiveResultScope(agentId: string, turnId: string): boolean {
+    return this.store.ids().some((channelId) => {
+      const channel = this.store.get(channelId);
+      if (channel.archived || !channel.members.some((member) => member.agentId === agentId)) return false;
+      return this.store.assignments(channelId).some((assignment) => {
+        if (assignment.agentId !== agentId || assignment.turnId !== turnId || !activeAssignment(assignment))
+          return false;
+        const task = this.store.tasks(channelId).find((task) => task.id === assignment.taskId);
+        return task?.state === "running" && task.revision === assignment.taskRevision;
+      });
+    });
   }
 
   async tool(

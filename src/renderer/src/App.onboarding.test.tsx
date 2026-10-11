@@ -44,6 +44,7 @@ describe("Dani-Dex connected desktop shell", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Next" }));
     await fireEvent.click(screen.getByRole("button", { name: "Next" }));
     await fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Next" }));
     await fireEvent.click(screen.getByRole("button", { name: "Open Dani-Dex" }));
     expect(window.danidex.saveSetup).toHaveBeenCalledWith({ preferredProvider: "claude", preferredModel: null });
     expect(await screen.findByRole("heading", { name: "Chief" })).toBeInTheDocument();

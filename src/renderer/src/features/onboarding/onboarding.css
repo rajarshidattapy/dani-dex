@@ -602,3 +602,56 @@
     margin-top: 16px;
   }
 }
+
+.talk-key-picker {
+  width: 100%;
+  text-align: center;
+}
+.talk-key-options {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 28px;
+}
+.talk-key-default {
+  width: 144px;
+  height: 136px;
+  border: 1px solid var(--dani-dex-border-strong);
+  border-radius: var(--dani-dex-radius-lg);
+  background: var(--dani-dex-bg-surface);
+  color: var(--dani-dex-text-primary);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.talk-key-default[aria-pressed="true"] {
+  border-color: var(--dani-dex-text-muted);
+}
+.talk-key-symbol {
+  font-size: var(--dani-dex-text-talk-symbol);
+  line-height: 1;
+  font-weight: 500;
+}
+.talk-key-custom {
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--dani-dex-text-muted);
+  border-radius: var(--dani-dex-radius-lg);
+  background: transparent;
+  color: var(--dani-dex-text-primary);
+  font-size: var(--dani-dex-text-3xl);
+  cursor: pointer;
+}
+.talk-key-note,
+.talk-key-scope {
+  color: var(--dani-dex-text-muted);
+  font-size: var(--dani-dex-text-sm);
+  margin-top: 14px;
+}
+.talk-key-scope {
+  font-size: var(--dani-dex-text-sm);
+}

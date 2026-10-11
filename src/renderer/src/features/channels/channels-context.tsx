@@ -181,9 +181,17 @@ const Channels = createSimpleContext({
           });
       }
     }
-    function open(_channelId: string): Promise<void> {
-      // Preserve delegation records without opening a second owner conversation.
-      return Promise.resolve();
+    async function open(channelId: string): Promise<void> {
+      if (!supported()) return;
+      setAgentSetupOpen(false);
+      setDirectTyping(false);
+      clearDirectSelection();
+      usage.dismissUsage();
+      persistChannelSelection(channelId);
+      setState((state) => {
+        Object.assign(state, { selectedId: channelId, page: null, editing: null, loading: true, error: null });
+      });
+      await refresh(channelId);
     }
     async function perform(action: () => Promise<void>): Promise<boolean> {
       const account = accountKey();

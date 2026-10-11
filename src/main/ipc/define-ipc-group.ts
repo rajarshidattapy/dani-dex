@@ -81,6 +81,7 @@ export type IpcGroupHandlers = { readonly [Group in keyof IpcEndpoints]: GroupHa
 function bindGroup(group: IpcEndpointGroup, handlers: Readonly<Record<string, BoundHandler>>): void {
   for (const [name, endpoint] of Object.entries(group)) {
     if (endpoint.kind !== "request") continue;
+    if (typeof handlers[name] !== "function") throw new Error(`Missing IPC handler: ${endpoint.channel} (${name})`);
     handlers[name](endpoint.channel);
   }
 }

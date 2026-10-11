@@ -57,8 +57,22 @@ function renderFlow(
 const AGENT_STATUS_WITH_OPENCODE = STORY_AGENT_STATUS;
 
 describe("OnboardingFlow", () => {
+  it("selects and persists a real custom talk key during onboarding, before jobs", async () => {
+    localStorage.removeItem("dani-dex.talk-key.v1");
+    const view = renderFlow();
+    for (let i = 0; i < 3; i++) await fireEvent.click(view.getByRole("button", { name: "Next" }));
+    expect(view.getByRole("heading", { name: "Choose your talk key" })).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Choose a custom talk key" }));
+    await fireEvent.keyDown(window, { key: "F8" });
+    expect(JSON.parse(localStorage.getItem("dani-dex.talk-key.v1") ?? "null")).toEqual({ key: "F8", label: "F8" });
+    await fireEvent.click(view.getByRole("button", { name: "Next" }));
+    expect(view.getByRole("heading", { name: "Give each agent a job" })).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Back" }));
+    expect(view.getByRole("status")).toHaveTextContent("Talk key: F8");
+    localStorage.removeItem("dani-dex.talk-key.v1");
+  });
   it.each(["darwin", "win32", "linux"] as const)(
-    "uses Dani Free and the same four-step flow on %s",
+    "uses Dani Free and the same five-step flow on %s",
     async (platform) => {
       const onSave = vi.fn(async (_provider: AgentProviderId) => undefined);
       const view = renderFlow({ platform, onSave });
@@ -68,6 +82,8 @@ describe("OnboardingFlow", () => {
       await fireEvent.click(view.getByRole("button", { name: "Next" }));
       await fireEvent.click(view.getByRole("button", { name: "Next" }));
       expect(view.getByRole("region", { name: "Import context" })).toBeInTheDocument();
+      await fireEvent.click(view.getByRole("button", { name: "Next" }));
+      expect(view.getByRole("heading", { name: "Choose your talk key" })).toBeInTheDocument();
       await fireEvent.click(view.getByRole("button", { name: "Next" }));
       await fireEvent.click(view.getByRole("button", { name: "Open Dani-Dex" }));
       await waitFor(() => expect(onSave).toHaveBeenCalledWith("opencode", null));
@@ -96,6 +112,8 @@ describe("OnboardingFlow", () => {
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
+    expect(view.getByRole("heading", { name: "Choose your talk key" })).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Next" }));
     await fireEvent.click(view.getByRole("button", { name: "Open Dani-Dex" }));
 
     // A built-in provider records no model: it keeps its own default.
@@ -115,6 +133,8 @@ describe("OnboardingFlow", () => {
 
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
+    expect(view.getByRole("heading", { name: "Choose your talk key" })).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Next" }));
     expect(await view.findByRole("heading", { name: "Give each agent a job" })).toBeInTheDocument();
   });
 
@@ -125,6 +145,8 @@ describe("OnboardingFlow", () => {
     const view = renderFlow({ onSave });
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
+    await fireEvent.click(view.getByRole("button", { name: "Next" }));
+    expect(view.getByRole("heading", { name: "Choose your talk key" })).toBeInTheDocument();
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
     await fireEvent.click(view.getByRole("button", { name: "Open Dani-Dex" }));
 
@@ -175,6 +197,8 @@ describe("OnboardingFlow", () => {
     // is what makes it the model a new agent starts on: the provider alone cannot name it.
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
+    await fireEvent.click(view.getByRole("button", { name: "Next" }));
+    expect(view.getByRole("heading", { name: "Choose your talk key" })).toBeInTheDocument();
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
     await fireEvent.click(view.getByRole("button", { name: "Open Dani-Dex" }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith("opencode", "studio-local/glm-5-air"));
@@ -240,6 +264,8 @@ describe("OnboardingFlow", () => {
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
+    expect(view.getByRole("heading", { name: "Choose your talk key" })).toBeInTheDocument();
+    await fireEvent.click(view.getByRole("button", { name: "Next" }));
     await fireEvent.click(view.getByRole("button", { name: "Open Dani-Dex" }));
     // The removed endpoint's model is gone from setup; the endpoint still saved supplies the model
     // instead, because the custom row is still the choice and a choice with no model would start the
@@ -277,6 +303,8 @@ describe("OnboardingFlow", () => {
     await fireEvent.click(within(providers).getByRole("radio", { name: /Custom provider/ }));
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
+    await fireEvent.click(view.getByRole("button", { name: "Next" }));
+    expect(view.getByRole("heading", { name: "Choose your talk key" })).toBeInTheDocument();
     await fireEvent.click(view.getByRole("button", { name: "Next" }));
     await fireEvent.click(view.getByRole("button", { name: "Open Dani-Dex" }));
 

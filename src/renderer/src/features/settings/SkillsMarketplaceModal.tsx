@@ -1378,7 +1378,13 @@ function AgentMarketplacePanel(props: {
     try {
       const channelId = await installGoalTeam(
         template,
-        { createAgent: window.danidex.agent.createAgent, channelCommand: window.danidex.agent.channelCommand },
+        {
+          createAgent: window.danidex.agent.createAgent,
+          channelCommand: window.danidex.agent.channelCommand,
+          listModels: window.danidex.agent.listModels,
+          getSidebarLayout: window.danidex.agent.getSidebarLayout,
+          mutateSidebarLayout: window.danidex.agent.mutateSidebarLayout,
+        },
         (agent) => props.onLocalAgentCreated?.(agent),
       );
       await props.onTeamCreated?.(channelId);
@@ -1577,7 +1583,10 @@ function AgentMarketplacePanel(props: {
           <section class="goal-team-marketplace" aria-label="Goal team templates">
             <div class="goal-team-heading">
               <h2>Goal teams</h2>
-              <p>Choose a template to create three specialist agents in one group chat. Then give them a goal.</p>
+              <p>
+                Choose a template to create a separate folder-like section with three specialist agents and one group
+                chat. Your existing agents stay where they are.
+              </p>
             </div>
             <Show when={teamError()}>{(message) => <p role="alert">{message()}</p>}</Show>
             <div class="goal-team-grid">

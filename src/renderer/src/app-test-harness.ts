@@ -33,8 +33,12 @@ function trackScopedAnalytics<Name extends AnalyticsEventName>(name: Name, prope
 
 function installAnalyticsSpies(): void {
   vi.spyOn(desktopAnalytics, "track").mockImplementation(trackScopedAnalytics);
-  vi.spyOn(desktopAnalytics, "scope").mockImplementation(() => ({ track: trackScopedAnalytics }));
-  vi.spyOn(desktopAnalytics, "anonymousScope").mockImplementation(() => ({ track: trackScopedAnalytics }));
+  vi.spyOn(desktopAnalytics, "scope").mockImplementation(() => ({
+    track: trackScopedAnalytics,
+  }));
+  vi.spyOn(desktopAnalytics, "anonymousScope").mockImplementation(() => ({
+    track: trackScopedAnalytics,
+  }));
 }
 const CONNECTING_STATUS: Record<AgentProviderId, AgentStatus> = {
   opencode: {
@@ -42,9 +46,19 @@ const CONNECTING_STATUS: Record<AgentProviderId, AgentStatus> = {
     cliVersion: "1.0.0",
     auth: { kind: "unknown" },
     providers: [
-      { id: "opencode", state: "sign-in-required", connectionState: "connecting", version: "1.0.0", message: null },
+      {
+        id: "opencode",
+        state: "sign-in-required",
+        connectionState: "connecting",
+        version: "1.0.0",
+        message: null,
+      },
     ],
-    capabilities: { chat: "unavailable", browser: "ready", computerUse: "unavailable" },
+    capabilities: {
+      chat: "unavailable",
+      browser: "ready",
+      computerUse: "unavailable",
+    },
     message: null,
     fullAccess: true,
   },
@@ -53,10 +67,25 @@ const CONNECTING_STATUS: Record<AgentProviderId, AgentStatus> = {
     cliVersion: "0.149.1",
     auth: { kind: "unknown" },
     providers: [
-      { id: "codex", state: "sign-in-required", connectionState: "connecting", version: "0.149.1", message: null },
-      { id: "claude", state: "sign-in-required", version: "2.1.246", message: null },
+      {
+        id: "codex",
+        state: "sign-in-required",
+        connectionState: "connecting",
+        version: "0.149.1",
+        message: null,
+      },
+      {
+        id: "claude",
+        state: "sign-in-required",
+        version: "2.1.246",
+        message: null,
+      },
     ],
-    capabilities: { chat: "unavailable", browser: "ready", computerUse: "unavailable" },
+    capabilities: {
+      chat: "unavailable",
+      browser: "ready",
+      computerUse: "unavailable",
+    },
     message: null,
     fullAccess: true,
   },
@@ -65,10 +94,25 @@ const CONNECTING_STATUS: Record<AgentProviderId, AgentStatus> = {
     cliVersion: "2.1.246",
     auth: { kind: "unknown" },
     providers: [
-      { id: "codex", state: "sign-in-required", version: "0.149.1", message: null },
-      { id: "claude", state: "sign-in-required", connectionState: "connecting", version: "2.1.246", message: null },
+      {
+        id: "codex",
+        state: "sign-in-required",
+        version: "0.149.1",
+        message: null,
+      },
+      {
+        id: "claude",
+        state: "sign-in-required",
+        connectionState: "connecting",
+        version: "2.1.246",
+        message: null,
+      },
     ],
-    capabilities: { chat: "unavailable", browser: "ready", computerUse: "unavailable" },
+    capabilities: {
+      chat: "unavailable",
+      browser: "ready",
+      computerUse: "unavailable",
+    },
     message: null,
     fullAccess: true,
   },
@@ -77,11 +121,31 @@ const CONNECTING_STATUS: Record<AgentProviderId, AgentStatus> = {
     cliVersion: "1.0.5",
     auth: { kind: "unknown" },
     providers: [
-      { id: "codex", state: "sign-in-required", version: "0.149.1", message: null },
-      { id: "claude", state: "sign-in-required", version: "2.1.246", message: null },
-      { id: "grok", state: "sign-in-required", connectionState: "connecting", version: "1.0.5", message: null },
+      {
+        id: "codex",
+        state: "sign-in-required",
+        version: "0.149.1",
+        message: null,
+      },
+      {
+        id: "claude",
+        state: "sign-in-required",
+        version: "2.1.246",
+        message: null,
+      },
+      {
+        id: "grok",
+        state: "sign-in-required",
+        connectionState: "connecting",
+        version: "1.0.5",
+        message: null,
+      },
     ],
-    capabilities: { chat: "unavailable", browser: "ready", computerUse: "unavailable" },
+    capabilities: {
+      chat: "unavailable",
+      browser: "ready",
+      computerUse: "unavailable",
+    },
     message: null,
     fullAccess: true,
   },
@@ -224,7 +288,9 @@ const eventBridges = {
   dynamicIslandAction: dynamicIslandActionBridge,
 } as const;
 
-export type BridgeSubscriberCounts = { readonly [Name in keyof typeof eventBridges]: number };
+export type BridgeSubscriberCounts = {
+  readonly [Name in keyof typeof eventBridges]: number;
+};
 
 /**
  * How many listeners each stub event bridge currently holds. Mounting subscribes
@@ -315,7 +381,11 @@ export function testConversationPage(
     revision: 1,
     messages,
     references: {},
-    readState: { unreadCount: 0, firstUnreadMessageId: null, throughMessageId: null },
+    readState: {
+      unreadCount: 0,
+      firstUnreadMessageId: null,
+      throughMessageId: null,
+    },
     pageInfo: { hasOlder: false, olderCursor: null },
     ...overrides,
   };
@@ -348,7 +418,71 @@ export function queuedDelivery(
   };
 }
 
-export function installVoiceRecordingMocks(): void {
+export function installVoiceRecordingMocks() {
+  class RecordingMediaStreamTrack extends EventTarget implements MediaStreamTrack {
+    readonly id = "test-audio-track";
+    readonly kind = "audio";
+    readonly label = "Test microphone";
+    enabled = true;
+    muted = false;
+    contentHint = "";
+    readyState: MediaStreamTrackState = "live";
+    onended: ((event: Event) => void) | null = null;
+    onmute: ((event: Event) => void) | null = null;
+    onunmute: ((event: Event) => void) | null = null;
+    stop = vi.fn(() => {
+      this.readyState = "ended";
+    });
+    clone() {
+      return new RecordingMediaStreamTrack();
+    }
+    async applyConstraints(): Promise<void> {}
+    getCapabilities(): MediaTrackCapabilities {
+      return {};
+    }
+    getConstraints(): MediaTrackConstraints {
+      return {};
+    }
+    getSettings(): MediaTrackSettings {
+      return { sampleRate: 16_000, channelCount: 1 };
+    }
+  }
+  class RecordingMediaStream extends EventTarget implements MediaStream {
+    readonly id = "test-audio-stream";
+    onaddtrack: ((event: MediaStreamTrackEvent) => void) | null = null;
+    onremovetrack: ((event: MediaStreamTrackEvent) => void) | null = null;
+    constructor(private readonly tracks: MediaStreamTrack[] = []) {
+      super();
+    }
+    get active() {
+      return this.tracks.some((track) => track.readyState === "live");
+    }
+    getTracks() {
+      return [...this.tracks];
+    }
+    getAudioTracks() {
+      return this.tracks.filter((track) => track.kind === "audio");
+    }
+    getVideoTracks() {
+      return this.tracks.filter((track) => track.kind === "video");
+    }
+    getTrackById(id: string) {
+      return this.tracks.find((track) => track.id === id) ?? null;
+    }
+    addTrack(track: MediaStreamTrack) {
+      this.tracks.push(track);
+    }
+    removeTrack(track: MediaStreamTrack) {
+      const index = this.tracks.indexOf(track);
+      if (index !== -1) this.tracks.splice(index, 1);
+    }
+    clone() {
+      return new RecordingMediaStream(this.tracks.map((track) => track.clone()));
+    }
+  }
+  const track = new RecordingMediaStreamTrack();
+  const stream = new RecordingMediaStream([track]);
+  vi.stubGlobal("MediaStream", RecordingMediaStream);
   class RecordingMediaRecorder extends EventTarget {
     readonly mimeType = "audio/webm";
     state: RecordingState = "inactive";
@@ -359,7 +493,9 @@ export function installVoiceRecordingMocks(): void {
 
     stop(): void {
       this.state = "inactive";
-      const recording = new Blob([new Uint8Array([1])], { type: this.mimeType });
+      const recording = new Blob([new Uint8Array([1])], {
+        type: this.mimeType,
+      });
       const dataAvailable = new Event("dataavailable");
       Object.defineProperty(dataAvailable, "data", { value: recording });
       this.dispatchEvent(dataAvailable);
@@ -367,6 +503,42 @@ export function installVoiceRecordingMocks(): void {
     }
   }
   class TestAudioContext {
+    sampleRate = 16_000;
+    state = "running";
+    async resume(): Promise<void> {
+      this.state = "running";
+    }
+    destination = {};
+    createMediaStreamSource() {
+      return { connect() {}, disconnect() {} };
+    }
+    createScriptProcessor() {
+      return { connect() {}, disconnect() {}, onaudioprocess: null };
+    }
+    currentTime = 0;
+    createOscillator() {
+      let ended: (() => void) | null = null;
+      return {
+        type: "sine",
+        frequency: { setValueAtTime() {}, linearRampToValueAtTime() {} },
+        connect() {},
+        disconnect() {},
+        start() {},
+        stop() {
+          queueMicrotask(() => ended?.());
+        },
+        set onended(fn: () => void) {
+          ended = fn;
+        },
+      };
+    }
+    createGain() {
+      return {
+        gain: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {} },
+        connect() {},
+        disconnect() {},
+      };
+    }
     async decodeAudioData(): Promise<AudioBuffer> {
       const decodedAudio: AudioBuffer = {
         copyFromChannel: () => undefined,
@@ -382,15 +554,27 @@ export function installVoiceRecordingMocks(): void {
 
     async close(): Promise<void> {}
   }
-  Object.defineProperty(window, "MediaRecorder", { configurable: true, writable: true, value: RecordingMediaRecorder });
-  Object.defineProperty(window, "AudioContext", { configurable: true, writable: true, value: TestAudioContext });
+  Object.defineProperty(window, "MediaRecorder", {
+    configurable: true,
+    writable: true,
+    value: RecordingMediaRecorder,
+  });
+  Object.defineProperty(window, "AudioContext", {
+    configurable: true,
+    writable: true,
+    value: TestAudioContext,
+  });
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
     writable: true,
     value: {
-      getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }),
+      getUserMedia: vi
+        .fn()
+        .mockResolvedValueOnce(stream)
+        .mockImplementation(async () => new RecordingMediaStream([new RecordingMediaStreamTrack()])),
     },
   });
+  return { stream, stopTrack: track.stop };
 }
 
 export function installDanidexStub(): void {
@@ -403,7 +587,11 @@ export function installDanidexStub(): void {
     writable: true,
     value: defaultMatchMedia,
   });
-  Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1024 });
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    writable: true,
+    value: 1024,
+  });
   Object.defineProperty(document, "hasFocus", {
     configurable: true,
     writable: true,
@@ -412,7 +600,9 @@ export function installDanidexStub(): void {
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
     writable: true,
-    value: { getUserMedia: vi.fn().mockRejectedValue(new DOMException("Denied", "NotAllowedError")) },
+    value: {
+      getUserMedia: vi.fn().mockRejectedValue(new DOMException("Denied", "NotAllowedError")),
+    },
   });
   Object.defineProperty(window, "danidex", {
     configurable: true,
@@ -427,10 +617,16 @@ export function installDanidexStub(): void {
       getSetupState: vi.fn().mockResolvedValue({ completed: true, preferredProvider: "codex" }),
       getAnalyticsPreference: vi.fn().mockResolvedValue({ enabled: true }),
       setAnalyticsPreference: vi.fn(async ({ enabled }) => ({ enabled })),
-      getApprovalAutomation: vi
-        .fn()
-        .mockResolvedValue({ turbo: false, defaultAutoApprove: false, autoApproveOverrides: {} }),
-      setApprovalAutomation: vi.fn(async () => ({ turbo: false, defaultAutoApprove: false, autoApproveOverrides: {} })),
+      getApprovalAutomation: vi.fn().mockResolvedValue({
+        turbo: false,
+        defaultAutoApprove: false,
+        autoApproveOverrides: {},
+      }),
+      setApprovalAutomation: vi.fn(async () => ({
+        turbo: false,
+        defaultAutoApprove: false,
+        autoApproveOverrides: {},
+      })),
       getAppLanguagePreference: vi.fn().mockResolvedValue({ language: "system" }),
       setAppLanguagePreference: vi.fn(async ({ language }) => ({ language })),
       onAppLanguagePreference: vi.fn(() => () => undefined),
@@ -502,6 +698,12 @@ export function installDanidexStub(): void {
         getModelStatus: vi.fn().mockResolvedValue({ phase: "ready", progress: 100, message: null }),
         prepareModel: vi.fn().mockResolvedValue({ phase: "ready", progress: 100, message: null }),
         transcribe: vi.fn().mockResolvedValue({ text: "Voice transcript" }),
+        cancelTranscription: vi.fn().mockResolvedValue(undefined),
+        startLocalDetection: vi.fn().mockResolvedValue(undefined),
+        detectLocalSpeech: vi.fn().mockResolvedValue([0, 0]),
+        stopLocalDetection: vi.fn().mockResolvedValue(undefined),
+        speakLocal: vi.fn().mockResolvedValue(undefined),
+        stopLocal: vi.fn().mockResolvedValue(undefined),
         createRealtimeSession: vi.fn().mockRejectedValue(new Error("Add your OpenAI API key to start a voice call.")),
         setRealtimeApiKey: vi.fn().mockResolvedValue("saved"),
         clearRealtimeApiKey: vi.fn().mockResolvedValue("missing"),
@@ -511,7 +713,12 @@ export function installDanidexStub(): void {
       auth: {
         getState: vi.fn().mockResolvedValue({
           status: "signed_in",
-          user: { id: "user-1", email: "person@example.com", name: null, avatarUrl: null },
+          user: {
+            id: "user-1",
+            email: "person@example.com",
+            name: null,
+            avatarUrl: null,
+          },
         }),
         retry: vi.fn().mockResolvedValue({ status: "signed_out" }),
         requestEmailCode: vi.fn().mockResolvedValue({
@@ -523,18 +730,33 @@ export function installDanidexStub(): void {
         }),
         verifyEmailCode: vi.fn().mockResolvedValue({
           status: "signed_in",
-          user: { id: "user-1", email: "person@example.com", name: null, avatarUrl: null },
+          user: {
+            id: "user-1",
+            email: "person@example.com",
+            name: null,
+            avatarUrl: null,
+          },
         }),
         getSignInOptions: vi.fn().mockResolvedValue({ providers: [], onlineServices: true }),
         signInWithProvider: vi.fn().mockResolvedValue({ status: "signing_in", provider: "github" }),
         cancelProviderSignIn: vi.fn().mockResolvedValue({ status: "signed_out" }),
         updateName: vi.fn().mockResolvedValue({
           status: "signed_in",
-          user: { id: "user-1", email: "person@example.com", name: "Norbert", avatarUrl: null },
+          user: {
+            id: "user-1",
+            email: "person@example.com",
+            name: "Norbert",
+            avatarUrl: null,
+          },
         }),
         updateAvatar: vi.fn().mockResolvedValue({
           status: "signed_in",
-          user: { id: "user-1", email: "person@example.com", name: null, avatarUrl: null },
+          user: {
+            id: "user-1",
+            email: "person@example.com",
+            name: null,
+            avatarUrl: null,
+          },
         }),
         logout: vi.fn().mockResolvedValue({ status: "signed_out" }),
         onEvent: vi.fn(authBridge.subscribe),
@@ -549,7 +771,13 @@ export function installDanidexStub(): void {
           cliVersion: "0.144.1",
           auth: { kind: "chatgpt", email: "norbert@example.com" },
           providers: [
-            { id: "opencode", state: "available", version: "1.18.27", message: null, email: null },
+            {
+              id: "opencode",
+              state: "available",
+              version: "1.18.27",
+              message: null,
+              email: null,
+            },
             {
               id: "codex",
               state: "available",
@@ -565,7 +793,11 @@ export function installDanidexStub(): void {
               email: "claude@example.com",
             },
           ],
-          capabilities: { chat: "ready", browser: "ready", computerUse: "ready" },
+          capabilities: {
+            chat: "ready",
+            browser: "ready",
+            computerUse: "ready",
+          },
           message: null,
           fullAccess: true,
         }),
@@ -575,7 +807,11 @@ export function installDanidexStub(): void {
           limits: [
             {
               id: "codex",
-              primary: { usedPercent: 28, windowDurationMins: 300, resetsAt: 1_786_563_600 },
+              primary: {
+                usedPercent: 28,
+                windowDurationMins: 300,
+                resetsAt: 1_786_563_600,
+              },
               secondary: {
                 usedPercent: 41,
                 windowDurationMins: 10_080,
@@ -737,7 +973,11 @@ export function installDanidexStub(): void {
           activeTurnId: null,
           revision: 0,
           messages: [],
-          readState: { unreadCount: 0, firstUnreadMessageId: null, throughMessageId: null },
+          readState: {
+            unreadCount: 0,
+            firstUnreadMessageId: null,
+            throughMessageId: null,
+          },
         })),
         readConversationPage: vi.fn().mockImplementation(async (input) => {
           const snapshot = await window.danidex.agent.readConversation(input.agentId);
@@ -746,7 +986,10 @@ export function installDanidexStub(): void {
             ...snapshot,
             messages,
             references: {},
-            pageInfo: { hasOlder: snapshot.messages.length > messages.length, olderCursor: null },
+            pageInfo: {
+              hasOlder: snapshot.messages.length > messages.length,
+              olderCursor: null,
+            },
           };
         }),
         searchConversationMessages: vi.fn().mockResolvedValue({ results: [], total: 0, nextCursor: null }),
@@ -779,7 +1022,14 @@ export function installDanidexStub(): void {
         }),
         sendMessage: vi.fn().mockResolvedValue({
           messageId: "message-1",
-          deliveries: [{ id: "delivery-1", recipientAgentId: "chief", status: "queued", position: 1 }],
+          deliveries: [
+            {
+              id: "delivery-1",
+              recipientAgentId: "chief",
+              status: "queued",
+              position: 1,
+            },
+          ],
         }),
         setMessageReaction: vi.fn().mockResolvedValue(undefined),
         listQueue: vi.fn().mockImplementation(async (agentId) => ({ agentId, deliveries: [] })),
@@ -935,7 +1185,11 @@ export function installDanidexStub(): void {
           otherMemberId: memberId,
           messages: [],
           revision: 0,
-          readState: { unreadCount: 0, firstUnreadMessageId: null, throughSequence: 0 },
+          readState: {
+            unreadCount: 0,
+            firstUnreadMessageId: null,
+            throughSequence: 0,
+          },
         })),
         readDirectConversationPage: vi.fn().mockImplementation(async (input) => {
           const snapshot = await window.danidex.servers.readDirectConversation(input.memberId);
@@ -943,7 +1197,10 @@ export function installDanidexStub(): void {
           return {
             ...snapshot,
             messages,
-            pageInfo: { hasOlder: snapshot.messages.length > messages.length, olderCursor: null },
+            pageInfo: {
+              hasOlder: snapshot.messages.length > messages.length,
+              olderCursor: null,
+            },
           };
         }),
         sendDirectMessage: vi.fn().mockImplementation(async (input) => ({

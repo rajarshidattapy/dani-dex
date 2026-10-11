@@ -5,11 +5,17 @@ import { mkdir, open, rename, rm, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { VoiceModelStatus } from "@dani-dex/contracts/ipc";
 
-export const WHISPER_MODEL_NAME = "ggml-medium-q5_0.bin";
-export const WHISPER_MODEL_BYTES = 539_212_467;
-export const WHISPER_MODEL_SHA256 = "19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f";
+export const WHISPER_MODEL_NAME = "ggml-base-q5_1.bin";
+export const WHISPER_MODEL_BYTES = 59_707_625;
+export const WHISPER_MODEL_SHA256 = "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898";
 export const WHISPER_MODEL_URL =
-  "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-medium-q5_0.bin";
+  "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base-q5_1.bin";
+
+export const WHISPER_VAD_MODEL_NAME = "ggml-silero-v6.2.0.bin";
+export const WHISPER_VAD_MODEL_BYTES = 885_098;
+export const WHISPER_VAD_MODEL_SHA256 = "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987";
+export const WHISPER_VAD_MODEL_URL =
+  "https://huggingface.co/ggml-org/whisper-vad/resolve/9ffd54a1e1ee413ddf265af9913beaf518d1639b/ggml-silero-v6.2.0.bin";
 
 interface VoiceModelEvents {
   status: [status: VoiceModelStatus];
@@ -32,6 +38,7 @@ export class VoiceModelService extends EventEmitter<VoiceModelEvents> {
   #status: VoiceModelStatus = { phase: "missing", progress: null, message: null };
   #preparation: Promise<VoiceModelStatus> | null = null;
   #abortController: AbortController | null = null;
+  #verifiedFile: string | null = null;
 
   constructor(options: VoiceModelServiceOptions) {
     super();
@@ -48,46 +55,59 @@ export class VoiceModelService extends EventEmitter<VoiceModelEvents> {
 
   async getStatus(): Promise<VoiceModelStatus> {
     if (this.#status.phase === "downloading") return this.#copyStatus();
-    const ready = await isExpectedModel(this.#modelPath, this.#expectedBytes, this.#expectedSha256);
+    const ready = await this.#isExpectedModel();
     this.#setStatus({ phase: ready ? "ready" : "missing", progress: ready ? 100 : null, message: null });
     return this.#copyStatus();
   }
 
-  prepare(): Promise<VoiceModelStatus> {
-    if (this.#preparation) return this.#preparation;
-    this.#preparation = this.#prepare().finally(() => {
-      this.#preparation = null;
-      this.#abortController = null;
-    });
-    return this.#preparation;
+  prepare(signal?: AbortSignal): Promise<VoiceModelStatus> {
+    if (signal?.aborted) return Promise.reject(new DOMException("Model preparation was stopped.", "AbortError"));
+    if (!this.#preparation) {
+      const controller = new AbortController();
+      this.#abortController = controller;
+      this.#preparation = this.#prepare(controller.signal).finally(() => {
+        this.#preparation = null;
+        if (this.#abortController === controller) this.#abortController = null;
+      });
+    }
+    if (!signal) return this.#preparation;
+    const controller = this.#abortController;
+    const abort = () => controller?.abort();
+    signal.addEventListener("abort", abort, { once: true });
+    return this.#preparation.finally(() => signal.removeEventListener("abort", abort));
   }
 
   shutdown(): void {
     this.#abortController?.abort();
   }
 
-  async #prepare(): Promise<VoiceModelStatus> {
-    if (await isExpectedModel(this.#modelPath, this.#expectedBytes, this.#expectedSha256)) {
-      this.#setStatus({ phase: "ready", progress: 100, message: null });
-      return this.#copyStatus();
-    }
-    await rm(this.#modelPath, { force: true });
-    if (!this.#downloadUrl) {
-      this.#setStatus({
-        phase: "error",
-        progress: null,
-        message: "Local voice transcription assets are unavailable. Run `bun run voice:prepare` and restart Dani-Dex.",
-      });
-      return this.#copyStatus();
-    }
-
+  async #prepare(signal: AbortSignal): Promise<VoiceModelStatus> {
     const partialPath = `${this.#modelPath}.part`;
-    this.#abortController = new AbortController();
-    this.#setStatus({ phase: "downloading", progress: 0, message: null });
     try {
+      if (await this.#isExpectedModel(signal)) {
+        signal.throwIfAborted();
+        this.#setStatus({ phase: "ready", progress: 100, message: null });
+        return this.#copyStatus();
+      }
+      signal.throwIfAborted();
+      await rm(this.#modelPath, { force: true });
+      signal.throwIfAborted();
+      if (!this.#downloadUrl) {
+        this.#setStatus({
+          phase: "error",
+          progress: null,
+          message:
+            "Local voice transcription assets are unavailable. Run `bun run voice:prepare` and restart Dani-Dex.",
+        });
+        return this.#copyStatus();
+      }
+      this.#setStatus({ phase: "downloading", progress: 0, message: null });
       await mkdir(dirname(this.#modelPath), { recursive: true, mode: 0o700 });
+      signal.throwIfAborted();
       await rm(partialPath, { force: true });
-      const response = await this.#fetch(this.#downloadUrl, { signal: this.#abortController.signal });
+      signal.throwIfAborted();
+      const response = await this.#fetch(this.#downloadUrl, { signal });
+      signal.throwIfAborted();
       if (!response.ok || !response.body) throw new Error(`download-status-${response.status}`);
 
       const hash = createHash("sha256");
@@ -95,17 +115,22 @@ export class VoiceModelService extends EventEmitter<VoiceModelEvents> {
       let lastProgress = -1;
       const destination = await open(partialPath, "wx", 0o600);
       const reader = response.body.getReader();
+      const abortRead = () => {
+        void reader.cancel().catch(() => {});
+      };
+      signal.addEventListener("abort", abortRead, { once: true });
       try {
+        signal.throwIfAborted();
         while (true) {
           const { done, value } = await reader.read();
+          signal.throwIfAborted();
           if (done) break;
           receivedBytes += value.byteLength;
-          if (receivedBytes > this.#expectedBytes) {
-            throw new Error("download-too-large");
-          }
+          if (receivedBytes > this.#expectedBytes) throw new Error("download-too-large");
           hash.update(value);
           let writtenBytes = 0;
           while (writtenBytes < value.byteLength) {
+            signal.throwIfAborted();
             const result = await destination.write(value, writtenBytes, value.byteLength - writtenBytes);
             writtenBytes += result.bytesWritten;
           }
@@ -116,23 +141,46 @@ export class VoiceModelService extends EventEmitter<VoiceModelEvents> {
           }
         }
       } finally {
+        signal.removeEventListener("abort", abortRead);
+        await reader.cancel().catch(() => {});
         await destination.close();
       }
+      signal.throwIfAborted();
       if (receivedBytes !== this.#expectedBytes || hash.digest("hex") !== this.#expectedSha256) {
         throw new Error("download-integrity-failed");
       }
       await rename(partialPath, this.#modelPath);
+      signal.throwIfAborted();
       this.#setStatus({ phase: "ready", progress: 100, message: null });
-    } catch (error) {
+    } catch {
       await rm(partialPath, { force: true });
-      const stopped = error instanceof Error && error.name === "AbortError";
       this.#setStatus({
         phase: "error",
         progress: null,
-        message: stopped ? "Voice model download was stopped." : "Could not download the voice model. Try again.",
+        message: signal.aborted
+          ? "Voice model download was stopped."
+          : "Could not download the voice model. Try again.",
       });
     }
     return this.#copyStatus();
+  }
+
+  async #isExpectedModel(signal?: AbortSignal): Promise<boolean> {
+    signal?.throwIfAborted();
+    this.#verifiedFile = existsSync(this.#modelPath) ? this.#verifiedFile : null;
+    if (!existsSync(this.#modelPath)) return false;
+    const before = await stat(this.#modelPath);
+    const key = `${before.dev}:${before.ino}:${before.size}:${before.mtimeMs}:${before.ctimeMs}`;
+    if (before.size !== this.#expectedBytes) {
+      this.#verifiedFile = null;
+      return false;
+    }
+    if (key === this.#verifiedFile) return true;
+    const valid = await isExpectedModel(this.#modelPath, this.#expectedBytes, this.#expectedSha256, signal);
+    const after = await stat(this.#modelPath);
+    const afterKey = `${after.dev}:${after.ino}:${after.size}:${after.mtimeMs}:${after.ctimeMs}`;
+    this.#verifiedFile = valid && key === afterKey ? key : null;
+    return this.#verifiedFile !== null;
   }
 
   #setStatus(status: VoiceModelStatus): void {
@@ -145,9 +193,15 @@ export class VoiceModelService extends EventEmitter<VoiceModelEvents> {
   }
 }
 
-async function isExpectedModel(path: string, expectedBytes: number, expectedSha256: string): Promise<boolean> {
+async function isExpectedModel(
+  path: string,
+  expectedBytes: number,
+  expectedSha256: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  signal?.throwIfAborted();
   if (!existsSync(path) || (await stat(path)).size !== expectedBytes) return false;
   const hash = createHash("sha256");
-  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  for await (const chunk of createReadStream(path, { signal })) hash.update(chunk);
   return hash.digest("hex") === expectedSha256;
 }

@@ -169,7 +169,7 @@ describe("Dani-Dex connected desktop shell", () => {
     expect(window.danidex.servers.select).not.toHaveBeenCalled();
   });
 
-  it("keeps Chief selected on each server despite saved worker selections", async () => {
+  it("restores saved visible worker selections on each server", async () => {
     vi.mocked(window.danidex.servers.list).mockResolvedValue([
       testServer("local", true),
       testServer("remote-1", false),
@@ -183,12 +183,12 @@ describe("Dani-Dex connected desktop shell", () => {
       JSON.stringify({ local: "sales-outbound", "remote-1": "sales-outbound" }),
     );
     const view = render(() => <App />);
-    await screen.findByRole("heading", { name: "Chief" });
-    expect(screen.queryByRole("button", { name: /Sales Outbound/ })).not.toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Sales Outbound" });
+    expect(screen.getByRole("button", { name: /Sales Outbound/ })).toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Studio Mac server" }));
-    await screen.findByRole("heading", { name: "Chief" });
+    await screen.findByRole("heading", { name: "Sales Outbound" });
     await fireEvent.click(screen.getByRole("button", { name: "Local server" }));
-    expect(await screen.findByRole("heading", { name: "Chief" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Sales Outbound" })).toBeVisible();
     view.unmount();
 
     vi.mocked(window.danidex.servers.list).mockResolvedValue([
@@ -196,9 +196,9 @@ describe("Dani-Dex connected desktop shell", () => {
       testServer("remote-1", true),
     ]);
     render(() => <App />);
-    expect(await screen.findByRole("heading", { name: "Chief" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Sales Outbound" })).toBeVisible();
     await fireEvent.click(screen.getByRole("button", { name: "Local server" }));
-    expect(await screen.findByRole("heading", { name: "Chief" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Sales Outbound" })).toBeVisible();
   });
 
   it("keeps the newer saved selection when deletion finishes in a disposed server scope", async () => {
@@ -223,7 +223,7 @@ describe("Dani-Dex connected desktop shell", () => {
     const view = render(() => <AppWithInternalActions />);
     await screen.findByRole("heading", { name: "Chief" });
     await screen.findByText(/research/, { selector: "output" });
-    expect(screen.queryByRole("button", { name: /Research, Outbound specialist/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Research, Outbound specialist/ })).toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Test internal delete" }));
     await waitFor(() => expect(window.danidex.agent.deleteAgent).toHaveBeenCalledWith("research"));
 
@@ -1221,7 +1221,7 @@ describe("Dani-Dex connected desktop shell", () => {
     );
     render(() => <AppWithInternalActions />);
     await screen.findByRole("heading", { name: "Chief" });
-    expect(screen.queryByRole("button", { name: /Sales Outbound, pinned agent/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Sales Outbound, pinned agent/ })).toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Test internal duplicate" }));
     await waitFor(() => expect(window.danidex.agent.duplicateAgent).toHaveBeenCalledWith("sales-outbound"));
     expect(screen.getByRole("heading", { name: "Chief" })).toBeInTheDocument();
@@ -1242,7 +1242,7 @@ describe("Dani-Dex connected desktop shell", () => {
         },
       ],
     });
-    expect(screen.queryByRole("button", { name: /Sales Outbound copy/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Sales Outbound copy/ })).toBeInTheDocument();
     expect(screen.getByLabelText("Internal agent IDs")).toHaveTextContent("sales-outbound-copy");
   });
 
@@ -1266,7 +1266,7 @@ describe("Dani-Dex connected desktop shell", () => {
     render(() => <AppWithInternalActions />);
     await screen.findByRole("heading", { name: "Chief" });
     await screen.findByText(/sales-outbound/, { selector: "output" });
-    expect(screen.queryByRole("button", { name: /Sales Outbound/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Sales Outbound/ })).toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Test internal delete sales" }));
     await waitFor(() => expect(window.danidex.agent.deleteAgent).toHaveBeenCalledWith("sales-outbound"));
     await waitFor(() => expect(screen.getByLabelText("Internal agent IDs")).not.toHaveTextContent("sales-outbound"));

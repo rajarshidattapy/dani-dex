@@ -3,10 +3,17 @@ import type { RealtimeVoiceSession } from "@dani-dex/contracts/ipc";
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 
 export interface RealtimeTransportHandlers {
+  /** Actual microphone RMS, zero means silent samples. */
+  onInputLevel?: (level: number) => void;
   /** The caller started talking: barge-in. */
   onSpeechStarted: () => void;
+  /** Local inference has started for an accepted utterance. Realtime may omit this event. */
+  onTranscriptionStarted?: () => void;
+  /** Local inference settled, including silence or rejected transcript markers. */
+  onTranscriptionFinished?: () => void;
   /** A finished utterance transcript. */
   onTranscript: (text: string) => void;
+  onRecognitionError?: (message: string) => void;
   onError: (message: string) => void;
 }
 

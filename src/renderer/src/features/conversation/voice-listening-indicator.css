@@ -1,0 +1,78 @@
+/* The call keeps capturing during thinking/speaking to allow interruption. */
+.voice-call-status[data-voice-phase="listening"],
+.voice-call-status[data-voice-phase="thinking"],
+.voice-call-status[data-voice-phase="speaking"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: var(--dani-dex-radius-pill);
+  background: var(--dani-dex-danger-soft);
+  color: var(--dani-dex-danger-text);
+  font-weight: 600;
+}
+.voice-call-status[data-voice-phase="listening"]::before,
+.voice-call-status[data-voice-phase="thinking"]::before,
+.voice-call-status[data-voice-phase="speaking"]::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: var(--dani-dex-radius-pill);
+  background: currentColor;
+  animation: dani-voice-capture-pulse 1.4s ease-in-out infinite;
+}
+.voice-call-status[data-voice-phase="listening"] + .voice-call-end,
+.voice-call-status[data-voice-phase="thinking"] + .voice-call-end,
+.voice-call-status[data-voice-phase="speaking"] + .voice-call-end {
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border: 1px solid var(--dani-dex-danger-border);
+  border-radius: var(--dani-dex-radius-pill);
+  background: var(--dani-dex-danger-soft);
+  color: var(--dani-dex-danger-text);
+}
+.voice-call-end:hover {
+  background: var(--dani-dex-danger-soft-hover);
+}
+.voice-call-end:focus-visible {
+  outline: 2px solid var(--dani-dex-danger-text);
+  outline-offset: 2px;
+}
+@keyframes dani-voice-capture-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--dani-dex-danger-focus);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 5px transparent;
+    opacity: 0.5;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-call-status[data-voice-phase]::before {
+    animation: none;
+  }
+}
+
+/* No synthetic pulse: wave heights come only from captured microphone RMS. */
+.voice-call-status[data-voice-phase]::before {
+  display: none;
+  animation: none;
+}
+.voice-input-wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  min-width: 62px;
+}
+.voice-input-wave i {
+  display: block;
+  width: 2px;
+  border-radius: var(--dani-dex-radius-xs);
+  background: currentColor;
+  transition: height var(--dani-dex-duration-voice-wave) linear;
+}

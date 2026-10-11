@@ -22,6 +22,7 @@ import {
   toast,
 } from "../../components/ui";
 import { usePlatform } from "../../platform";
+import { readTalkKey } from "../settings/talk-key";
 import { VoiceSetupDialog } from "../voice-call/VoiceSetupDialog";
 import { fileBadge, formatFileSize } from "./AttachmentCards";
 import { attachmentReferenceTone } from "./AttachmentReference";
@@ -69,10 +70,18 @@ export function ConversationComposer() {
     showComposerActions,
     startVoiceRecording,
     stopVoiceRecording,
+    cancelVoiceRecording,
     startCall,
     endCall,
+    voiceCallHeard,
     voiceCallPhase,
+    voiceCallQueuedInputs,
+    voiceCallQueuedLines,
+    voiceCallMuted,
+    toggleVoiceCallMute,
     voiceCallError,
+    voiceCallProgress,
+    voiceCallLevels,
     submitComposer,
     submitting,
     unreferencedDraftAttachments,
@@ -87,7 +96,7 @@ export function ConversationComposer() {
   // A pending Save keeps its exact request for retry. Block changes until retry or cancel.
   const savePending = () => Boolean(editingDeliveryId() && editingPendingSave());
   // The mention picker grows out of the same edge as the queue, so only one of them holds it.
-  const queueVisible = () => queuePanelVisible() && !pickerOpen();
+  const queueVisible = () => (queuePanelVisible() || voiceCallQueuedLines().length > 0) && !pickerOpen();
   const voiceAvailable = () => voiceSupported(platform.appInfo()?.platform);
   // Voice transport failures must not occupy the prompt composer or block ordinary text chat.
   // The notice is emitted once per failure; retrying a call clears the store error first.
@@ -143,6 +152,103 @@ export function ConversationComposer() {
       onCleanup(() => window.clearTimeout(timer));
     },
   );
+  let holdKey: string | undefined;
+  let holdKeyTimer: ReturnType<typeof setTimeout> | undefined;
+  function clearTalkKey() {
+    holdKey = undefined;
+    if (holdKeyTimer) clearTimeout(holdKeyTimer);
+    holdKeyTimer = undefined;
+  }
+  function talkKeyDown(event: KeyboardEvent) {
+    if (event.repeat || event.defaultPrevented) return;
+    if (holdKey && event.key !== holdKey) {
+      clearTalkKey();
+      cancelVoiceRecording();
+      return;
+    }
+    const binding = readTalkKey(platform.appInfo()?.platform ?? "darwin");
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (
+      event.key !== binding.key ||
+      holdKey ||
+      voicePhase() !== "idle" ||
+      voiceCallPhase() !== "off" ||
+      !voiceAvailable() ||
+      !agentReady() ||
+      props.server?.kind === "remote" ||
+      target?.closest("dialog,[role=dialog]")
+    )
+      return;
+    holdKey = binding.key;
+    // Delay a modifier hold so ordinary Command+C/V chords never open the mic.
+    holdKeyTimer = setTimeout(() => {
+      holdKeyTimer = undefined;
+      if (holdKey) void startVoiceRecording();
+    }, 300);
+  }
+  function talkKeyUp(event: KeyboardEvent) {
+    if (!holdKey || event.key !== holdKey) return;
+    clearTalkKey();
+    if (voicePhase() === "recording") submitComposer();
+    else cancelVoiceRecording();
+  }
+  window.addEventListener("keydown", talkKeyDown);
+  window.addEventListener("keyup", talkKeyUp);
+  onCleanup(() => {
+    clearTalkKey();
+    window.removeEventListener("keydown", talkKeyDown);
+    window.removeEventListener("keyup", talkKeyUp);
+  });
+  let holdTalkPointer: number | undefined;
+  let skipVoiceClick = false;
+  function clearHoldToTalk() {
+    holdTalkPointer = undefined;
+    window.removeEventListener("pointerup", finishHoldToTalk);
+    window.removeEventListener("pointercancel", cancelHoldToTalk);
+  }
+  function finishHoldToTalk(event: PointerEvent) {
+    if (holdTalkPointer === undefined || event.pointerId !== holdTalkPointer) return;
+    clearHoldToTalk();
+    if (voicePhase() === "recording") submitComposer();
+    else cancelVoiceRecording();
+  }
+  function cancelHoldToTalk(event: PointerEvent) {
+    if (holdTalkPointer === undefined || event.pointerId !== holdTalkPointer) return;
+    clearHoldToTalk();
+    cancelVoiceRecording();
+  }
+  function cancelDictationCapture() {
+    clearTalkKey();
+    clearHoldToTalk();
+    // A release/explicit send already accepted for transcription keeps its original chat target.
+    if (voicePhase() !== "transcribing") cancelVoiceRecording();
+  }
+  function onDictationEscape(event: KeyboardEvent) {
+    if (event.key === "Escape") cancelDictationCapture();
+  }
+  function onDictationPointerDown(event: PointerEvent) {
+    if (event.button !== 0 || holdTalkPointer !== undefined || voicePhase() !== "idle" || voiceCallPhase() !== "off")
+      return;
+    skipVoiceClick = true;
+    holdTalkPointer = event.pointerId;
+    window.addEventListener("pointerup", finishHoldToTalk);
+    window.addEventListener("pointercancel", cancelHoldToTalk);
+    void startVoiceRecording();
+  }
+  function onDictationClick(event: MouseEvent) {
+    const suppressPointerClick = skipVoiceClick && event.detail !== 0;
+    skipVoiceClick = false;
+    if (suppressPointerClick || voiceCallPhase() !== "off") return;
+    void startVoiceRecording();
+  }
+  window.addEventListener("blur", cancelDictationCapture);
+  window.addEventListener("keydown", onDictationEscape);
+  onCleanup(() => {
+    cancelDictationCapture();
+    window.removeEventListener("blur", cancelDictationCapture);
+    window.removeEventListener("keydown", onDictationEscape);
+  });
+
   const attachmentAccept = () => {
     const server = props.server;
     const local = server?.kind !== "remote";
@@ -162,7 +268,7 @@ export function ConversationComposer() {
           localSupported={voiceAvailable()}
           onClose={() => setVoiceSetupOpen(false)}
           onLocalDictation={() => void startVoiceRecording()}
-          onOpenAiCall={() => void startCall()}
+          onOpenAiCall={() => void startCall("realtime")}
         />
         <div
           class="agent-queue-slot"
@@ -175,6 +281,7 @@ export function ConversationComposer() {
               <Loading>
                 <QueuePanel
                   deliveries={presentedQueueDeliveries()}
+                  waitingVoiceLines={voiceCallQueuedLines()}
                   // Only for an agent that is waiting. When the channel work is this agent's own,
                   // the activity line above already shows it working, and naming it twice reads as
                   // two different waits.
@@ -249,8 +356,14 @@ export function ConversationComposer() {
           <section class="composer-slash-suggestions" aria-label="Chat commands">
             <For
               each={[
-                { command: "/goal", description: "Assign a goal with completion checks" },
-                { command: "/loop", description: "Build, test and verify up to five cycles" },
+                {
+                  command: "/goal",
+                  description: "Assign a goal with completion checks",
+                },
+                {
+                  command: "/loop",
+                  description: "Build, test and verify up to five cycles",
+                },
               ].filter((item) => item.command.startsWith(currentDraft().text.trim()))}
             >
               {(item) => (
@@ -424,15 +537,60 @@ export function ConversationComposer() {
                       class="voice-call-button"
                       aria-label="Start voice call"
                       disabled={!props.agent || voicePhase() !== "idle"}
-                      onClick={() => setVoiceSetupOpen(true)}
+                      onClick={() => {
+                        if (voiceAvailable()) void startCall("local");
+                        else setVoiceSetupOpen(true);
+                      }}
                     >
                       <AudioLines aria-hidden="true" />
                     </Button>
                   }
                 >
-                  <span class="voice-call-status" role="status">
-                    {voiceCallStatusLabel(voiceCallPhase())}
+                  <span class="voice-call-status" data-voice-phase={voiceCallPhase()} role="status">
+                    <span
+                      class="voice-input-wave"
+                      role="img"
+                      aria-label={
+                        voiceCallLevels().some((level) => level > 0.001)
+                          ? "Microphone sound detected"
+                          : "Microphone silent"
+                      }
+                    >
+                      <For each={voiceCallLevels()}>
+                        {(level) => (
+                          <i
+                            style={{
+                              height: `${2 + Math.min(1, level * 30) * 22}px`,
+                            }}
+                          />
+                        )}
+                      </For>
+                    </span>
+                    <span class="voice-call-text" title={voiceCallHeard() ?? undefined}>
+                      {voiceCallMuted()
+                        ? "Microphone paused"
+                        : voiceCallHeard()
+                          ? voiceCallHeard()
+                          : voiceCallQueuedInputs() > 0
+                            ? `Queued voice: ${voiceCallQueuedInputs()}`
+                            : voiceCallPhase() === "preparing"
+                              ? voiceCallProgress() === null
+                                ? "Checking voice model"
+                                : `Downloading voice model ${voiceCallProgress()}%`
+                              : voiceCallStatusLabel(voiceCallPhase())}
+                    </span>
                   </span>
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    aria-label={voiceCallMuted() ? "Unmute microphone" : "Pause microphone"}
+                    aria-pressed={voiceCallMuted() ? "true" : "false"}
+                    onClick={toggleVoiceCallMute}
+                  >
+                    <Show when={voiceCallMuted()} fallback={<Mic aria-hidden="true" />}>
+                      <span aria-hidden="true">▶</span>
+                    </Show>
+                  </Button>
                   <Button
                     variant="ghost"
                     type="button"
@@ -443,6 +601,11 @@ export function ConversationComposer() {
                     <PhoneOff aria-hidden="true" />
                   </Button>
                 </Show>
+              </Show>
+              <Show when={voiceCallPhase() === "off" && voiceCallQueuedInputs() > 0}>
+                <span class="voice-call-status" role="status">
+                  Queued voice: {voiceCallQueuedInputs()}
+                </span>
               </Show>
               <Show when={voiceAvailable() && voiceCallPhase() === "off"}>
                 <Show when={voicePhase() === "preparing"}>
@@ -457,6 +620,8 @@ export function ConversationComposer() {
                       variant="ghost"
                       type="button"
                       class="dictation-button"
+                      title="Hold to speak, release to send. Keyboard activation starts dictation."
+                      aria-description="Hold to record and release to send. Press Escape to cancel."
                       aria-label={voiceButtonLabel(voicePhase())}
                       disabled={
                         voicePhase() === "requesting" ||
@@ -464,7 +629,8 @@ export function ConversationComposer() {
                         voicePhase() === "transcribing" ||
                         (voicePhase() === "idle" && (!props.agent || !agentReady()))
                       }
-                      onClick={() => void startVoiceRecording()}
+                      onPointerDown={onDictationPointerDown}
+                      onClick={onDictationClick}
                     >
                       <Show
                         when={

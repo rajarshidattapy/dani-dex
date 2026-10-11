@@ -218,7 +218,9 @@ import type {
 } from "./ipc-team-host";
 import type {
   RealtimeVoiceSession,
+  VoiceDetectionInput,
   VoiceModelStatus,
+  VoiceSpeechInput,
   VoiceTranscriptionInput,
   VoiceTranscriptionResult,
 } from "./ipc-voice";
@@ -301,14 +303,14 @@ export interface AgentDesktopApi {
   previewWorkspaceFile: (input: OpenWorkspaceFileInput) => Promise<FilePreview>;
   sendMessage: (input: SendMessageInput, serverId?: string) => Promise<QueuedMessageReceipt>;
   setMessageReaction: (input: SetMessageReactionInput) => Promise<void>;
-  listQueue: (agentId: string) => Promise<QueueSnapshot>;
+  listQueue: (agentId: string, serverId?: string) => Promise<QueueSnapshot>;
   acknowledgeFailedTurn: (input: AcknowledgeFailedTurnInput) => Promise<void>;
-  cancelQueuedMessage: (input: CancelQueuedMessageInput) => Promise<void>;
+  cancelQueuedMessage: (input: CancelQueuedMessageInput, serverId?: string) => Promise<void>;
   steerQueuedMessage: (input: SteerQueuedMessageInput) => Promise<void>;
   editQueuedMessage: (input: QueueEditRequest & { agentId: string }, serverId?: string) => Promise<QueueSnapshot>;
   updateQueuedMessage: (input: UpdateQueuedMessageInput, serverId?: string) => Promise<void>;
   reorderQueue: (input: ReorderQueueInput) => Promise<void>;
-  interrupt: (input: InterruptTurnInput) => Promise<void>;
+  interrupt: (input: InterruptTurnInput, serverId?: string) => Promise<void>;
   respondToPrompt: (input: RespondToPromptInput) => Promise<void>;
   respondToApproval: (input: RespondToApprovalInput) => Promise<void>;
   respondToBrowserSecret: (input: RespondToBrowserSecretInput) => Promise<void>;
@@ -509,9 +511,16 @@ export interface VoiceDesktopApi {
   codexConnect: () => Promise<void>;
   codexStart: (input: { sdp: string; consent: boolean }) => Promise<{ sdp: string }>;
   codexStop: () => Promise<void>;
+  requestMicrophoneAccess: () => Promise<boolean>;
   getModelStatus: () => Promise<VoiceModelStatus>;
   prepareModel: () => Promise<VoiceModelStatus>;
   transcribe: (input: VoiceTranscriptionInput) => Promise<VoiceTranscriptionResult>;
+  cancelTranscription: (id: string) => Promise<void>;
+  startLocalDetection: (id: string) => Promise<void>;
+  detectLocalSpeech: (input: VoiceDetectionInput) => Promise<number[]>;
+  stopLocalDetection: (id: string) => Promise<void>;
+  speakLocal: (input: VoiceSpeechInput) => Promise<Uint8Array | void>;
+  stopLocal: (id: string) => Promise<void>;
   createRealtimeSession: () => Promise<RealtimeVoiceSession>;
   /**
    * Voice calls run on the user's own OpenAI API key (bring your own key). As with provider keys,

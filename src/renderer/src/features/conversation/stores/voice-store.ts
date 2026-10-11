@@ -3,6 +3,9 @@ import { onCleanup } from "solid-js";
 import { desktopAnalytics } from "../../../analytics";
 import { errorMessage } from "../../../error-message";
 import { appendVoiceTranscript, recordingToWav } from "../../../voice-recording";
+import { playListeningCue } from "../../voice-call/listening-cue";
+import { transcriptionOptions } from "../../voice-call/speech-preferences";
+import { isRepetitiveVoiceTranscript, usableVoiceTranscript } from "../../voice-call/voice-transcript";
 import { EMPTY_DRAFT } from "../composer-draft";
 import { composerDraftKey } from "../conversation-keys";
 import type { ComposerDraft, ConversationProps, ConversationTarget } from "../conversation-types";
@@ -11,7 +14,10 @@ import { voiceCaptureError, voiceTranscriptionError } from "../voice-status";
 export interface VoiceSubmitHooks {
   saveEdit: (
     draftOverride?: ComposerDraft,
-    target?: ConversationTarget & { deliveryId: string; originalAttachmentIds: string[] },
+    target?: ConversationTarget & {
+      deliveryId: string;
+      originalAttachmentIds: string[];
+    },
     submittedSnapshot?: ComposerDraft,
   ) => Promise<boolean>;
   submit: (
@@ -92,28 +98,46 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
       }
       deps.setVoicePhase("requesting");
       deps.setVoiceModelProgress(null);
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      if (!(await window.danidex.voice.requestMicrophoneAccess()))
+        throw new Error(
+          "Microphone access is not allowed by macOS. Enable Electron or Dani-Dex in System Settings > Privacy & Security > Microphone.",
+        );
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false,
+      });
       if (resources.voiceDisposed || !deps.viewIsMounted() || resources.voiceRequestGeneration !== generation) {
         for (const track of stream.getTracks()) track.stop();
         if (!resources.voiceDisposed && resources.voiceRequestGeneration === generation) deps.setVoicePhase("idle");
         return;
       }
-      const recorder = new MediaRecorder(stream);
       resources.voiceStream = stream;
+      const recorder = new MediaRecorder(stream);
       resources.voiceRecorder = recorder;
       resources.voiceAgentId = agentId;
       resources.voiceServerId = serverId;
       resources.voiceChunks = [];
       recorder.addEventListener("dataavailable", (event) => {
-        if (event.data.size > 0) resources.voiceChunks.push(event.data);
+        if (resources.voiceRequestGeneration === generation && event.data.size > 0) {
+          resources.voiceChunks.push(event.data);
+        }
       });
-      recorder.addEventListener("stop", () => void finishVoiceRecording(recorder.mimeType));
+      recorder.addEventListener("stop", () => {
+        if (resources.voiceRequestGeneration === generation) void finishVoiceRecording(recorder.mimeType, generation);
+      });
+      await playListeningCue().catch(() => undefined);
+      if (resources.voiceDisposed || !deps.viewIsMounted() || resources.voiceRequestGeneration !== generation) {
+        for (const track of stream.getTracks()) track.stop();
+        return;
+      }
       recorder.start();
       startVoiceElapsedTimer();
       deps.setVoicePhase("recording");
       resources.voiceRecordingTimer = setTimeout(stopVoiceRecording, VOICE_AUDIO_LIMITS.maximumSeconds * 1_000);
     } catch (error) {
-      if (resources.voiceRequestGeneration === generation) deps.setVoicePhase("idle");
+      if (resources.voiceDisposed || resources.voiceRequestGeneration !== generation) return;
+      stopVoiceStream();
+      deps.setVoicePhase("idle");
       deps.setConversationError(target, voiceCaptureError(error));
     }
   }
@@ -134,7 +158,25 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
     stopVoiceStream();
   }
 
-  async function finishVoiceRecording(mimeType: string): Promise<void> {
+  function cancelVoiceRecording(): void {
+    if (deps.voicePhase() === "idle") return;
+    const recorder = resources.voiceRecorder;
+    resources.voiceRequestGeneration += 1;
+    stopVoiceStream();
+    stopVoiceElapsedTimer();
+    if (resources.voiceRecordingTimer) clearTimeout(resources.voiceRecordingTimer);
+    resources.voiceRecordingTimer = undefined;
+    resources.voiceRecorder = undefined;
+    resources.voiceChunks = [];
+    resources.voiceAgentId = undefined;
+    resources.voiceServerId = undefined;
+    resources.voiceSubmitRequest = undefined;
+    if (recorder?.state === "recording") recorder.stop();
+    deps.setVoicePhase("idle");
+    deps.setVoiceModelProgress(null);
+  }
+
+  async function finishVoiceRecording(mimeType: string, generation = resources.voiceRequestGeneration): Promise<void> {
     const targetAgentId = resources.voiceAgentId;
     const targetServerId = resources.voiceServerId;
     const chunks = resources.voiceChunks;
@@ -151,20 +193,37 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
     try {
       if (chunks.length === 0) throw new Error("No speech was recorded.");
       const audio = await recordingToWav(new Blob(chunks, { type: mimeType }));
-      const result = await window.danidex.voice.transcribe({ audio });
-      if (!result.text.trim()) throw new Error("No speech was detected.");
+      if (resources.voiceDisposed || resources.voiceRequestGeneration !== generation) return;
+      const result = await window.danidex.voice.transcribe({
+        id: crypto.randomUUID(),
+        audio,
+        ...transcriptionOptions(),
+      });
+      const transcript = usableVoiceTranscript(result.text);
+      if (!transcript) throw new Error("No speech was detected.");
+      if (isRepetitiveVoiceTranscript(transcript))
+        throw new Error("The recording was repetitive or unclear. Try again in a quieter room.");
       analytics.track("voice_transcription", {
         result: "succeeded",
         audio_duration_seconds: audioDurationSeconds,
         duration_ms: Math.max(0, Math.round(performance.now() - startedAt)),
       });
-      if (resources.voiceDisposed) return;
-      const recordingTarget = { agentId: targetAgentId, serverId: targetServerId };
+      if (resources.voiceDisposed || resources.voiceRequestGeneration !== generation) return;
+      const recordingTarget = {
+        agentId: targetAgentId,
+        serverId: targetServerId,
+      };
       deps.clearConversationError(recordingTarget);
       const draft = submitRequest?.draft ?? deps.drafts()[composerDraftKey(recordingTarget)] ?? EMPTY_DRAFT;
-      const transcribedDraft = { ...draft, text: appendVoiceTranscript(draft.text, result.text) };
+      const transcribedDraft = {
+        ...draft,
+        text: appendVoiceTranscript(draft.text, transcript),
+      };
       if (submitRequest) {
-        const target = { agentId: submitRequest.agentId, serverId: submitRequest.serverId };
+        const target = {
+          agentId: submitRequest.agentId,
+          serverId: submitRequest.serverId,
+        };
         let delivered: boolean;
         if (submitRequest.queuedEdit) {
           delivered = await deps.hooks.saveEdit(
@@ -178,7 +237,7 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
         } else {
           delivered = await deps.hooks.submit(transcribedDraft, target, submitRequest.draft);
         }
-        if (!delivered) deps.hooks.restoreTranscript(target, result.text);
+        if (!delivered) deps.hooks.restoreTranscript(target, transcript);
       } else {
         const key = composerDraftKey(recordingTarget);
         deps.setDrafts((current) => ({ ...current, [key]: transcribedDraft }));
@@ -193,7 +252,7 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
         duration_ms: Math.max(0, Math.round(performance.now() - startedAt)),
         failure_code: "transcription_failed",
       });
-      if (!resources.voiceDisposed) {
+      if (!resources.voiceDisposed && resources.voiceRequestGeneration === generation) {
         const target = { agentId: targetAgentId, serverId: targetServerId };
         deps.setConversationErrors((current) => ({
           ...current,
@@ -201,7 +260,7 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
         }));
       }
     } finally {
-      if (!resources.voiceDisposed) deps.setVoicePhase("idle");
+      if (!resources.voiceDisposed && resources.voiceRequestGeneration === generation) deps.setVoicePhase("idle");
     }
   }
 
@@ -229,6 +288,7 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
   return {
     startVoiceRecording,
     stopVoiceRecording,
+    cancelVoiceRecording,
     finishVoiceRecording,
     stopVoiceStream,
     startVoiceElapsedTimer,

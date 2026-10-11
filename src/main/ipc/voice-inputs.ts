@@ -1,5 +1,11 @@
-import { VOICE_AUDIO_LIMITS, type VoiceTranscriptionInput } from "@dani-dex/contracts/ipc";
-import { isObject } from "./validation";
+import { INPUT_LIMITS } from "@dani-dex/contracts/input-limits";
+import {
+  VOICE_AUDIO_LIMITS,
+  type VoiceDetectionInput,
+  type VoiceSpeechInput,
+  type VoiceTranscriptionInput,
+} from "@dani-dex/contracts/ipc";
+import { isObject, requireString } from "./validation";
 
 export function parseVoiceTranscription(input: unknown): VoiceTranscriptionInput {
   if (!isObject(input) || !(input.audio instanceof Uint8Array)) {
@@ -24,7 +30,37 @@ export function parseVoiceTranscription(input: unknown): VoiceTranscriptionInput
   ) {
     throw new Error("Voice audio must be a 16 kHz mono PCM WAV file.");
   }
-  return { audio };
+  if (input.language !== undefined && input.language !== "en" && input.language !== "hi" && input.language !== "bn")
+    throw new Error("Unsupported speech language.");
+  if (input.engine !== undefined && input.engine !== "whisper") throw new Error("Unsupported speech engine.");
+  return {
+    id: requireString(input.id, "Voice transcription id"),
+    audio,
+    ...(input.language ? { language: input.language } : {}),
+    ...(input.engine ? { engine: "whisper" as const } : {}),
+  };
+}
+
+export function parseVoiceSpeech(input: unknown): VoiceSpeechInput {
+  if (!isObject(input)) throw new Error("Voice speech is required.");
+  return {
+    id: requireString(input.id, "Voice speech id"),
+    text: requireString(input.text, "Voice speech text", INPUT_LIMITS.messageText),
+  };
+}
+
+export function parseVoiceDetection(input: unknown): VoiceDetectionInput {
+  if (!isObject(input) || !(input.samples instanceof Float32Array)) throw new Error("Voice samples are required.");
+  const samples = input.samples;
+  if (
+    samples.length < 512 ||
+    samples.length > 4_096 ||
+    samples.length % 512 !== 0 ||
+    samples.some((value) => !Number.isFinite(value) || Math.abs(value) > 1)
+  ) {
+    throw new Error("Voice samples must be complete 16 kHz mono speech detection windows.");
+  }
+  return { id: requireString(input.id, "Voice detection id"), samples };
 }
 
 function ascii(value: Uint8Array, start: number, end: number): string {

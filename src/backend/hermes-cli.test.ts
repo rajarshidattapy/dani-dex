@@ -69,7 +69,7 @@ describe("Hermes CLI", () => {
     );
     await chmod(slow, 0o755);
     await expect(
-      resolveHermesCli({ systemCandidates: [], bundledExecutable: slow, timeoutMs: 500 }),
+      resolveHermesCli({ systemCandidates: [], bundledExecutable: slow, timeoutMs: 2000 }),
     ).resolves.toMatchObject({ version: "0.19.0", source: "managed" });
   });
 

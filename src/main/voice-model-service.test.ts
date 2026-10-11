@@ -41,6 +41,25 @@ function serviceFor(
 }
 
 describe("VoiceModelService", () => {
+  it("invalidates a verified status cache when same-size model contents change", async () => {
+    const path = await fixturePath();
+    const data = new TextEncoder().encode("verified model");
+    await writeFile(path, data);
+    const service = serviceFor(
+      path,
+      data,
+      vi.fn(async () => new Response()),
+    );
+    expect((await service.getStatus()).phase).toBe("ready");
+    expect((await service.getStatus()).phase).toBe("ready");
+    await writeFile(path, new TextEncoder().encode("corrupt! model"));
+    expect((await service.getStatus()).phase).toBe("missing");
+    await writeFile(path, data);
+    expect((await service.getStatus()).phase).toBe("ready");
+    await rm(path);
+    expect((await service.getStatus()).phase).toBe("missing");
+  });
+
   it("uses a verified cached model without network access", async () => {
     const path = await fixturePath();
     const data = new TextEncoder().encode("verified model");
@@ -113,5 +132,50 @@ describe("VoiceModelService", () => {
       message: "Voice model download was stopped.",
     });
     expect(existsSync(`${path}.part`)).toBe(false);
+  });
+
+  it("cancels a stalled download body, removes its partial file, and permits a verified retry", async () => {
+    const path = await fixturePath();
+    const data = new TextEncoder().encode("expected model");
+    const cancelled = Promise.withResolvers<void>();
+    const opened = Promise.withResolvers<void>();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(data.subarray(0, 4));
+      },
+      cancel() {
+        cancelled.resolve();
+      },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        opened.resolve();
+        return new Response(body);
+      })
+      .mockResolvedValueOnce(new Response(data));
+    const service = serviceFor(path, data, fetchMock);
+    const controller = new AbortController();
+    const preparation = service.prepare(controller.signal);
+    await opened.promise;
+    await vi.waitFor(() => expect(existsSync(`${path}.part`)).toBe(true));
+    controller.abort();
+    await cancelled.promise;
+    await expect(preparation).resolves.toMatchObject({ phase: "error" });
+    expect(existsSync(`${path}.part`)).toBe(false);
+    await expect(service.prepare()).resolves.toMatchObject({ phase: "ready" });
+    expect(await readFile(path)).toEqual(Buffer.from(data));
+  });
+
+  it("does not leave preparation active when filesystem preparation rejects", async () => {
+    const path = await fixturePath();
+    const data = new TextEncoder().encode("verified retry");
+    await mkdir(path);
+    const fetchMock = vi.fn(async () => new Response(data));
+    const service = serviceFor(path, data, fetchMock);
+    await expect(service.prepare()).resolves.toMatchObject({ phase: "error" });
+    await rm(path, { recursive: true });
+    await expect(service.prepare()).resolves.toMatchObject({ phase: "ready" });
+    expect(await readFile(path)).toEqual(Buffer.from(data));
   });
 });

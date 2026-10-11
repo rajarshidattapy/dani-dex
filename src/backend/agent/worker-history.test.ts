@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { historyData, transferableHistory, type WorkerHistoryEntry } from "./worker-history";
+import { hasRetiredAttempt, historyData, transferableHistory, type WorkerHistoryEntry } from "./worker-history";
 
 const coverage: WorkerHistoryEntry = { kind: "coverage", turnId: "origin", version: 1, fromBeginning: true };
 const user: WorkerHistoryEntry = { kind: "user", turnId: "a", input: [{ type: "text", text: "original" }] };
@@ -68,5 +68,17 @@ describe("committed history transfer", () => {
         "new",
       ),
     ).toThrow("budget");
+  });
+});
+
+describe("cancellation confirmation ledger", () => {
+  it("requires a receipt for each retired turn and respects later retirement", () => {
+    const retirement: WorkerHistoryEntry = { kind: "retirement", turnId: "a", reason: "user cancellation" };
+    const confirmation: WorkerHistoryEntry = { kind: "cancellation-confirmed", turnId: "a" };
+    expect(hasRetiredAttempt([retirement])).toBe(true);
+    expect(hasRetiredAttempt([retirement, confirmation])).toBe(false);
+    expect(hasRetiredAttempt([confirmation, retirement])).toBe(true);
+    expect(hasRetiredAttempt([retirement, confirmation, { ...retirement, turnId: "b" }])).toBe(true);
+    expect(hasRetiredAttempt([{ ...terminal, retiredAttempt: true }, confirmation])).toBe(false);
   });
 });

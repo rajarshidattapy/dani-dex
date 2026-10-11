@@ -623,8 +623,8 @@ describe("Dani-Dex connected desktop shell", () => {
       await screen.findByRole("status", { name: "Chief is working: Working in Project launch" }),
     ).toBeInTheDocument();
 
-    // Worker queue events stay internal and do not replace the Chief's visible queue.
-    expect(screen.queryByRole("button", { name: /Sales Outbound, Outbound specialist/ })).not.toBeInTheDocument();
+    // Workers stay visible in the V1 roster; their queue events do not replace Chief's queue.
+    expect(screen.getByRole("button", { name: /Sales Outbound, Outbound specialist/ })).toBeInTheDocument();
     emitAgentEvent?.({ type: "queue-changed", snapshot: { agentId: "sales-outbound", deliveries: [held], hold } });
     expect(screen.getByRole("heading", { name: "Chief" })).toBeInTheDocument();
     expect(within(queue).getByRole("group", { name: "Queued message 1: Read the report" })).toBeInTheDocument();

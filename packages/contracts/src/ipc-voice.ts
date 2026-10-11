@@ -7,11 +7,25 @@ export const VOICE_AUDIO_LIMITS = {
 } as const;
 
 export interface VoiceTranscriptionInput {
+  language?: "en" | "hi" | "bn";
+  engine?: "whisper";
+  id: string;
   audio: Uint8Array;
 }
 
 export interface VoiceTranscriptionResult {
   text: string;
+}
+
+export interface VoiceSpeechInput {
+  id: string;
+  text: string;
+}
+
+/** A bounded 16 kHz mono float frame, in complete 512-sample Silero windows. */
+export interface VoiceDetectionInput {
+  id: string;
+  samples: Float32Array;
 }
 
 /** A short-lived browser credential for one OpenAI Realtime call; never the user's API key. */

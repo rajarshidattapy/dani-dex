@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// This package imports the sibling directly rather than the workspace alias.
+vi.mock("./online-services", () => ({ DANI_DEX_HOSTED_SITE_SUFFIX: ".sites.dani-dex.example" }));
+
 import { INPUT_LIMITS } from "./input-limits";
 import {
   AGENT_RUNTIME_ATTENTION_LIMIT,

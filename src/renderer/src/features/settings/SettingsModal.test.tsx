@@ -63,6 +63,27 @@ const idleUpdateStatus: UpdateStatus = {
 };
 
 describe("SettingsModal", () => {
+  it("puts talk-key selection in its own Hotkey sidebar section, not General", async () => {
+    render(() => (
+      <SettingsModal
+        open
+        onOpenChange={() => {}}
+        value={DEFAULT_GENERAL_SETTINGS}
+        onValueChange={() => {}}
+        appInfo={null}
+        updateStatus={idleUpdateStatus}
+        onUpdateAction={async () => {}}
+        account={account}
+        onUpdateAccountName={async () => {}}
+        onUpdateAccountAvatar={async () => {}}
+      />
+    ));
+    expect(screen.queryByRole("button", { name: "Choose a custom talk key" })).toBeNull();
+    await fireEvent.click(screen.getByRole("tab", { name: "Hotkey" }));
+    expect(screen.getByRole("button", { name: "Choose a custom talk key" })).toBeVisible();
+    await fireEvent.click(screen.getByRole("tab", { name: "General" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Choose a custom talk key" })).toBeNull());
+  });
   it("disconnects another desktop from the account session list and preserves the current device", async () => {
     const current: AccountSession = {
       sessionId: "current",

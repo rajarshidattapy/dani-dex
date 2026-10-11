@@ -1,7 +1,9 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 import {
   ClientSideConnection,
@@ -23,7 +25,7 @@ import { type DynamicRecord, isBoolean, isString } from "@dani-dex/contracts/run
 import { redactText } from "@dani-dex/logging";
 import { elicitationOptions, elicitationValue, secretElicitationField } from "./agent/prompts";
 import { fallbackFailure } from "./agent/worker-fallback";
-import { historyData, transferableHistory, type WorkerHistory } from "./agent/worker-history";
+import { hasRetiredAttempt, historyData, transferableHistory, type WorkerHistory } from "./agent/worker-history";
 import type { AgentProvider } from "./agent-client";
 import { type AgentCliInfo, cliSpawnTarget } from "./cli";
 import { type DynamicToolNamespace, LocalMcpBridge, type LocalMcpSession } from "./local-mcp-bridge";
@@ -107,6 +109,8 @@ interface AcpTurn {
   task: Promise<void>;
   controller: AbortController;
   fallbackUsed: boolean;
+  pauseDeadline?: () => void;
+  resumeDeadline?: () => void;
 }
 
 interface AcpThread {
@@ -664,12 +668,16 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       if (resume && requestedThreadId) {
         let response: Awaited<ReturnType<typeof connection.loadSession>>;
         try {
-          response = await connection.loadSession({
-            sessionId: requestedThreadId,
-            cwd,
-            additionalDirectories,
-            mcpServers,
-          });
+          response = await withTimeout(
+            connection.loadSession({
+              sessionId: requestedThreadId,
+              cwd,
+              additionalDirectories,
+              mcpServers,
+            }),
+            this.#requestTimeoutMs,
+            "ACP session setup timed out. No prompt was dispatched; retry after checking the model connection.",
+          );
         } catch (error) {
           this.emit("diagnostic", redactText(`ACP saved-session load failed: ${String(error)}`));
           throw new Error(
@@ -681,7 +689,11 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         configOptions = response.configOptions ?? [];
         currentModelId = currentModelFromSessionSetup(response);
       } else {
-        const response = await connection.newSession({ cwd, additionalDirectories, mcpServers });
+        const response = await withTimeout(
+          connection.newSession({ cwd, additionalDirectories, mcpServers }),
+          this.#requestTimeoutMs,
+          "ACP session setup timed out. No prompt was dispatched; retry after checking the model connection.",
+        );
         id = response.sessionId;
         configOptions = response.configOptions ?? [];
         currentModelId = currentModelFromSessionSetup(response);
@@ -712,6 +724,15 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   }
 
   async #applyConfig(thread: AcpThread, model: string | null, effort: string | null): Promise<void> {
+    const configure = <T>(request: Promise<T>): Promise<T> =>
+      withTimeout(
+        request,
+        this.#requestTimeoutMs,
+        "ACP model setup timed out. No prompt was dispatched; this session is quarantined.",
+      ).catch((error) => {
+        thread.retiredAttempt = true;
+        throw error;
+      });
     for (const [category, value] of [
       ["model", model],
       ["thought_level", effort],
@@ -721,11 +742,13 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         const currentModel = this.#models.find((candidate) => candidate.id === thread.currentModelId);
         if (currentModel && currentModel.usesModelReasoningEffort !== null) {
           if (currentModel.usesModelReasoningEffort && currentModel.supportedReasoningEfforts.includes(value)) {
-            await this.#requireConnection().request("session/set_model", {
-              sessionId: thread.wireId,
-              modelId: thread.currentModelId,
-              _meta: { reasoningEffort: currentModel.reasoningEffortWireValues.get(value) ?? value },
-            });
+            await configure(
+              this.#requireConnection().request("session/set_model", {
+                sessionId: thread.wireId,
+                modelId: thread.currentModelId,
+                _meta: { reasoningEffort: currentModel.reasoningEffortWireValues.get(value) ?? value },
+              }),
+            );
           }
           continue;
         }
@@ -736,10 +759,12 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       );
       if (!option) {
         if (category === "model" && thread.currentModelId !== value) {
-          await this.#requireConnection().request("session/set_model", {
-            sessionId: thread.wireId,
-            modelId: value,
-          });
+          await configure(
+            this.#requireConnection().request("session/set_model", {
+              sessionId: thread.wireId,
+              modelId: value,
+            }),
+          );
           thread.currentModelId = value;
         }
         continue;
@@ -750,12 +775,20 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       const wanted =
         category === "thought_level" ? reasoningEffortWireValues(values.map((entry) => entry.value)).get(value) : value;
       const selected = values.find((candidate) => candidate.value === wanted);
-      if (!selected) continue;
-      const response = await this.#requireConnection().setSessionConfigOption({
-        sessionId: thread.wireId,
-        configId: option.id,
-        value: selected.value,
-      });
+      if (!selected) {
+        if (category === "model")
+          throw new Error(
+            "The selected model is not available in this provider session. Check its endpoint and try again.",
+          );
+        continue;
+      }
+      const response = await configure(
+        this.#requireConnection().setSessionConfigOption({
+          sessionId: thread.wireId,
+          configId: option.id,
+          value: selected.value,
+        }),
+      );
       thread.configOptions = response.configOptions;
       if (category === "model") thread.currentModelId = selected.value;
     }
@@ -782,11 +815,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         entry.turnId !== thread.activeTurn?.id &&
         !resolved.has(entry.turnId),
     );
-    if (
-      thread.retiredAttempt ||
-      unresolved ||
-      persisted?.some((entry) => entry.kind === "retirement" || (entry.kind === "terminal" && entry.retiredAttempt))
-    )
+    if (thread.retiredAttempt || unresolved || (persisted && hasRetiredAttempt(persisted)))
       throw new Error("This provider attempt was quarantined. Safe recovery is required before a new turn.");
     if (!steer && thread.activeTurn) throw new Error("The ACP thread already has an active turn.");
     if (steer)
@@ -882,8 +911,11 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       const wireId = thread.wireId;
       let deadline: ReturnType<typeof setTimeout> | undefined;
       let abortListener: (() => void) | undefined;
+      let remainingMs = this.options.promptDeadlineMs ?? 120_000;
+      let armedAt = Date.now();
+      let waits = 0;
       const stopped = new Promise<never>((_resolve, reject) => {
-        deadline = setTimeout(() => {
+        const expire = () => {
           thread.retiredAttempt = true;
           let persistenceFailure = "";
           try {
@@ -905,9 +937,30 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
                 persistenceFailure,
             ),
           );
-        }, this.options.promptDeadlineMs ?? 120_000);
+        };
+        const arm = () => {
+          armedAt = Date.now();
+          deadline = setTimeout(expire, remainingMs);
+        };
+        turn.pauseDeadline = () => {
+          if (turn.controller.signal.aborted) return;
+          if (waits++ === 0) {
+            if (deadline) clearTimeout(deadline);
+            remainingMs = Math.max(0, remainingMs - (Date.now() - armedAt));
+          }
+        };
+        turn.resumeDeadline = () => {
+          if (waits > 0 && --waits === 0 && !turn.controller.signal.aborted) arm();
+        };
+        arm();
         abortListener = () => {
-          reject(new Error("Turn cancelled"));
+          // A local abort is not proof that provider tools stopped. Give ACP v1 a bounded
+          // window to return its cancellation-confirmed prompt response. Otherwise keep quarantine.
+          if (deadline) clearTimeout(deadline);
+          deadline = setTimeout(
+            () => reject(new Error("Provider cancellation was not confirmed. Safe recovery is required.")),
+            Math.min(this.options.promptDeadlineMs ?? 3_000, 3_000),
+          );
         };
         turn.controller.signal.addEventListener("abort", abortListener, { once: true });
       });
@@ -917,6 +970,26 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       } finally {
         if (deadline) clearTimeout(deadline);
         if (abortListener) turn.controller.signal.removeEventListener("abort", abortListener);
+        turn.pauseDeadline = undefined;
+        turn.resumeDeadline = undefined;
+      }
+
+      if (
+        turn.controller.signal.aborted &&
+        response.stopReason === "cancelled" &&
+        thread.activeTurn === turn &&
+        !this.#stopping
+      ) {
+        // Persist the provider receipt before clearing the gate. A storage failure remains quarantined.
+        this.options.workerHistory?.append(thread.id, { kind: "cancellation-confirmed", turnId: turn.id });
+        thread.retiredAttempt = false;
+      }
+
+      if (turn.controller.signal.aborted && thread.retiredAttempt) {
+        this.emit(
+          "diagnostic",
+          `Provider settled an interrupted prompt with stopReason=${response.stopReason}; cancellation is not confirmed. Session remains quarantined.`,
+        );
       }
 
       if (turn.controller.signal.aborted || thread.activeTurn !== turn || this.#stopping) {
@@ -1223,7 +1296,27 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         : ["edit", "delete", "move"].includes(params.toolCall.kind ?? "")
           ? "file-change"
           : "permissions";
+    if (process.env.DANI_DEX_PERMISSION_QA_TRACE === "1") {
+      const root = join(tmpdir(), "dani-dex-permission-qa");
+      try {
+        await mkdir(root, { recursive: true, mode: 0o700 });
+        await appendFile(
+          join(root, "requests.jsonl"),
+          JSON.stringify({
+            at: Date.now(),
+            threadId: thread.id,
+            turnId,
+            request: params,
+            prior: activeTurn.messages.find((item) => item.id === params.toolCall.toolCallId),
+          }) + "\n",
+          { mode: 0o600 },
+        );
+      } catch {
+        this.emit("diagnostic", "Local permission QA trace could not be saved.");
+      }
+    }
     const rawInput = isRecord(params.toolCall.rawInput) ? params.toolCall.rawInput : {};
+    const channelResult = correlatedChannelResult(params.toolCall, activeTurn.messages);
     const acpScope = {
       kind: params.toolCall.kind ?? null,
       name: params.toolCall.name ?? null,
@@ -1237,7 +1330,8 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     };
     this.emit("diagnostic", redactText(`ACP permission scope: ${JSON.stringify(acpScope)}`));
     const requestedPermissions = kind === "permissions" ? { [params.toolCall.kind ?? "file-system"]: true } : null;
-    const result = await this.#callServerRequest(
+    const result = await this.#awaitHumanResponse(
+      activeTurn,
       `item/${kind === "command" ? "commandExecution" : kind === "file-change" ? "fileChange" : "permissions"}/requestApproval`,
       {
         threadId: thread.id,
@@ -1247,6 +1341,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         permissions: requestedPermissions,
         acpOptions: params.options,
         acpToolCall: acpScope,
+        acpChannelResult: channelResult,
         acpExternalDirectory:
           this.provider === "opencode" &&
           params.toolCall.kind === "other" &&
@@ -1307,7 +1402,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     )
       throw new Error("No live attempt for user input.");
     const active = thread.activeTurn;
-    const result = await this.#callServerRequest("item/tool/requestUserInput", {
+    const result = await this.#awaitHumanResponse(active, "item/tool/requestUserInput", {
       ...params,
       threadId: sessionId,
       turnId: thread?.activeTurn?.id ?? randomUUID(),
@@ -1416,6 +1511,15 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       effectUnknown: !result.success,
     });
     return result;
+  }
+
+  async #awaitHumanResponse(turn: AcpTurn, method: string, params: unknown): Promise<unknown> {
+    turn.pauseDeadline?.();
+    try {
+      return await this.#callServerRequest(method, params);
+    } finally {
+      turn.resumeDeadline?.();
+    }
   }
 
   #callServerRequest(method: string, params: unknown): Promise<unknown> {
@@ -1728,4 +1832,26 @@ function mergeToolData(previous: unknown, next: unknown): ToolData | undefined {
     return merged;
   }
   return parseToolData(next);
+}
+
+/** Only the current turn's exact call ID may supply missing ACP permission arguments. */
+export function correlatedChannelResult(
+  call: RequestPermissionRequest["toolCall"],
+  items: ThreadItem[],
+): { text: string } | null {
+  const prior = items.find((item) => item.id === call.toolCallId && item.type === "toolCall");
+  const names = [call.name, call.title, prior?.name].filter((value) => value != null);
+  if (!names.length || names.some((name) => name !== "danidex_channel_result")) return null;
+  if (call.rawInput != null && !isRecord(call.rawInput)) return null;
+  const direct = isRecord(call.rawInput) && Object.keys(call.rawInput).length ? call.rawInput : null;
+  const cached = prior && isRecord(prior.arguments) ? prior.arguments : null;
+  if (direct && cached && JSON.stringify(direct) !== JSON.stringify(cached)) return null;
+  const input = direct ?? cached;
+  return input &&
+    typeof input.text === "string" &&
+    input.text.trim() &&
+    input.text.length <= 100_000 &&
+    Object.keys(input).every((key) => key === "text")
+    ? { text: input.text }
+    : null;
 }

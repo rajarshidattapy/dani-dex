@@ -28,6 +28,7 @@ import {
 } from "./dev-automation/stack-registry";
 import { resolveDevelopmentAppDataRoot } from "./development-state-paths";
 import { withoutElectronRuntimeFlags } from "./electron-spawn-env";
+import { ensureDevelopmentVoiceRuntime } from "./ensure-development-voice-runtime";
 import { prepareDevelopmentEnvironment } from "./prepare-dev-environment";
 
 const logger = createDaniDexLogger("dev-services");
@@ -278,6 +279,12 @@ async function main(): Promise<void> {
     logger.info("Generated apps/auth-api/.env.dev for local development.");
   }
   const services = servicesForTarget(target);
+  if (!dryRun && services.some((name) => name === "app" || name === "test-client")) {
+    ensureDevelopmentVoiceRuntime(projectRoot, process.platform, () => {
+      logger.info("Preparing local voice runtime once; later starts use the cached executables.");
+      execFileSync(process.execPath, ["run", "voice:prepare-runtime"], { cwd: projectRoot, stdio: "inherit" });
+    });
+  }
   const sharedEnvironment = developmentEnvironmentForTarget(target);
   if (isolated) {
     sharedEnvironment.DANI_DEX_DEV_INSTANCE_ID ??= developmentInstanceIdForWorktree(projectRoot);

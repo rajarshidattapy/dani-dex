@@ -4,12 +4,14 @@ import { DANI_DEX_API_ORIGIN } from "@dani-dex/contracts/online-services";
 import { KILO_PROFILE_ENDPOINT, KILO_PROFILE_MODEL, validateGatewayRoute } from "../backend/agent/profile-generation";
 import { AgentDatabaseSupervisor } from "../backend/agent-data/agent-database-supervisor";
 import { AgentTables } from "../backend/agent-data/agent-tables";
+import { setRuntimeModelSource } from "../backend/model-source";
 import { requireProviderDriver } from "../backend/provider-drivers";
 import { spawnAgentDatabaseHost } from "./agent-database-host-process";
 import { ChatGptPlanClient } from "./chatgpt-plan-client";
 import { ChatGptPlanService } from "./chatgpt-plan-service";
 import { ChatGptPlanStore } from "./chatgpt-plan-store";
 import { prepareChiefOfStaff } from "./chief-of-staff-bootstrap";
+import { developmentDaniFreeSource } from "./development-dani-free-source";
 import { LocalSkillLibrary } from "./local-skill-library";
 import { localSkillTools } from "./local-skill-tools";
 import { MAC_PERMISSION_URLS } from "./mac-permission-urls";
@@ -102,6 +104,7 @@ import { DynamicIslandWindowController } from "./dynamic-island-window";
 import { HostService } from "./host-service";
 import { HostUpdateCoordinator } from "./host-update-coordinator";
 import { HostedSiteDesktopService } from "./hosted-site-service";
+import { KittenSpeechService } from "./kitten-speech-service";
 import { LanguageService } from "./language-service";
 import { MacBundleUpdater } from "./mac-bundle-updater";
 import type { MacHapticFeedback } from "./mac-haptic-feedback";
@@ -120,6 +123,7 @@ import {
 import { ManagedSkillService } from "./managed-skill-service";
 import { startMcpOAuthRedirectServer } from "./mcp-oauth-redirect-server";
 import { McpOAuthStore } from "./mcp-oauth-store";
+import { NativeSpeechService } from "./native-speech-service";
 import { ProviderCredentialStore } from "./provider-credential-store";
 import { ProviderRuntimeManager, providerRuntimeRoot } from "./provider-runtime-manager";
 import { RemoteDesktopManager } from "./remote-desktop-manager";
@@ -154,7 +158,13 @@ import {
   UpdateService,
 } from "./update-service";
 import { listSiblingDaniDexInstances } from "./update-sibling-instances";
-import { WHISPER_MODEL_NAME, WHISPER_MODEL_URL } from "./voice-model-service";
+import { VoiceActivityService } from "./voice-activity-service";
+import {
+  WHISPER_MODEL_NAME,
+  WHISPER_MODEL_URL,
+  WHISPER_VAD_MODEL_NAME,
+  WHISPER_VAD_MODEL_URL,
+} from "./voice-model-service";
 import { VoiceTranscriptionService } from "./voice-transcription-service";
 
 const logger = createDaniDexLogger("application-services");
@@ -271,6 +281,8 @@ export interface ApplicationServices {
   customProviders: CustomProviderStore;
   marketplaceAgents: AgentMarketplaceService;
   voice: VoiceTranscriptionService;
+  voiceActivity: VoiceActivityService;
+  nativeSpeech: NativeSpeechService | KittenSpeechService;
   dynamicIsland: DynamicIslandWindowController;
   cuaDriver: CuaDriverRuntime;
   computerUseHighlight: ComputerUseHighlightController;
@@ -309,6 +321,7 @@ export async function createApplicationServices({
   forwardVoiceModelStatus,
   prepareForUpdateInstall,
 }: ApplicationServiceContext): Promise<ApplicationServices> {
+  if (app.isPackaged) delete process.env.DANI_DEX_PERMISSION_QA_TRACE;
   // The one forward reference left in this function: the controller is built at the top of
   // startup because its window must be able to appear immediately, but the two services its
   // critical actions drive are built hundreds of lines below. A single named local rather than
@@ -529,6 +542,17 @@ export async function createApplicationServices({
   teardown.push(TEARDOWN_ORDER.providerRuntimes, "the provider runtimes", () => providerRuntimes.stop());
   // Before `new AgentService`, which reads every `executablePath` eagerly.
   await providerRuntimes.initialize();
+  if (!app.isPackaged && appVariant === "dev") {
+    try {
+      const source = await developmentDaniFreeSource(process.env.DANI_DEX_DANI_FREE_URL ?? "http://127.0.0.1:4190");
+      if (source) setRuntimeModelSource(source);
+    } catch (error) {
+      logger.warn("Development Dani Free proxy unavailable; no built-in route installed.", {
+        error: String(error),
+        cause: error instanceof Error ? String(error.cause) : null,
+      });
+    }
+  }
   const customProviders = new CustomProviderStore({
     path: join(app.getPath("userData"), CUSTOM_PROVIDERS_FILE),
     cipher: {
@@ -814,8 +838,8 @@ export async function createApplicationServices({
     requestTimeoutMs: 30_000,
     profileGenerationRoute: () => ({
       provider: "opencode",
-      modelId: "stepfun/step-3.7-flash:free",
-      endpoint: "https://api.kilo.ai/api/gateway/chat/completions",
+      modelId: KILO_PROFILE_MODEL,
+      endpoint: KILO_PROFILE_ENDPOINT,
     }),
     preferredProvider: setupState.preferredProvider ?? "opencode",
     bundledExecutables: providerRuntimes.bundledExecutables(),
@@ -1196,14 +1220,37 @@ export async function createApplicationServices({
   });
   teardown.push(TEARDOWN_ORDER.remoteDesktop, "remote desktop", () => remoteDesktop.stop());
   const voice = new VoiceTranscriptionService({
-    resourcesRoot: app.isPackaged ? join(process.resourcesPath, "whisper") : resolve(".dani-dex-build/whisper"),
+    diagnosticRoot:
+      !app.isPackaged && process.env.DANI_DEX_VOICE_QA_CAPTURE === "1"
+        ? join(app.getPath("temp"), "dani-dex-voice-qa")
+        : undefined,
+    whistleRoot: app.isPackaged ? undefined : resolve(__dirname, "../..", ".dani-dex-build/whistle"),
+    resourcesRoot: app.isPackaged
+      ? join(process.resourcesPath, "whisper")
+      : resolve(__dirname, "../..", ".dani-dex-build/whisper"),
     modelPath: app.isPackaged
       ? join(app.getPath("userData"), "runtimes", "whisper", WHISPER_MODEL_NAME)
-      : resolve(".dani-dex-build/whisper/model", WHISPER_MODEL_NAME),
+      : resolve(__dirname, "../..", ".dani-dex-build/whisper/model", WHISPER_MODEL_NAME),
     modelDownloadUrl: WHISPER_MODEL_URL,
+    vadModelPath: app.isPackaged
+      ? join(app.getPath("userData"), "runtimes", "whisper", WHISPER_VAD_MODEL_NAME)
+      : resolve(__dirname, "../..", ".dani-dex-build/whisper/model", WHISPER_VAD_MODEL_NAME),
+    vadModelDownloadUrl: WHISPER_VAD_MODEL_URL,
   });
   teardown.push(TEARDOWN_ORDER.voice, "voice transcription", () => voice.shutdown());
   voice.on("modelStatus", forwardVoiceModelStatus);
+  const voiceActivity = new VoiceActivityService(
+    app.isPackaged ? join(process.resourcesPath, "whisper") : resolve(__dirname, "../..", ".dani-dex-build/whisper"),
+    voice.vadModelPath,
+  );
+  teardown.push(TEARDOWN_ORDER.voice, "voice activity detection", () => voiceActivity.shutdown());
+  const nativeSpeech = app.isPackaged
+    ? new NativeSpeechService()
+    : new KittenSpeechService(
+        resolve(__dirname, "../..", ".dani-dex-build/kitten"),
+        resolve(__dirname, "../..", "tools/native-voice/kitten-worker.py"),
+      );
+  teardown.push(TEARDOWN_ORDER.voice, "local speech", () => nativeSpeech.shutdown());
   const currentVersion = app.getVersion();
   // Skip the file check in dev: unpacked runs never enable updates, so avoid touching resourcesPath.
   const updateMetadataAvailable = app.isPackaged && existsSync(join(process.resourcesPath, "app-update.yml"));
@@ -1403,6 +1450,8 @@ export async function createApplicationServices({
     customProviders,
     marketplaceAgents,
     voice,
+    voiceActivity,
+    nativeSpeech,
     dynamicIsland,
     cuaDriver,
     computerUseHighlight,

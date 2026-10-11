@@ -13,7 +13,8 @@
 import { readFile } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 import { LOCAL_SERVER_ID } from "@dani-dex/contracts/ipc";
-import { app, session } from "electron";
+import { createDaniDexLogger } from "@dani-dex/logging";
+import { app, session, systemPreferences } from "electron";
 import type { AgentService } from "../backend/agent-service";
 import type { MailboxStore } from "../backend/mailbox-store";
 import { buildContentSecurityPolicy } from "./content-security-policy";
@@ -21,6 +22,8 @@ import type { RemoteServerManager } from "./remote-server-manager";
 import { canCheckRendererPermission, canRequestRendererPermission } from "./renderer-permissions";
 import type { TeamStore } from "./team-store";
 import { isTrustedRendererUrl } from "./trusted-renderer";
+
+const permissionLogger = createDaniDexLogger("microphone-permission");
 
 export function configureContentSecurityPolicy(): void {
   const policy = buildContentSecurityPolicy(app.isPackaged, process.env.REMOTE_SIGNAL_URL);
@@ -40,12 +43,35 @@ export function configureContentSecurityPolicy(): void {
 }
 
 export function configureRendererPermissions(): void {
-  session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) =>
-    canCheckRendererPermission(permission, requestingOrigin, details),
-  );
+  if (process.platform === "darwin")
+    permissionLogger.info("macOS microphone status", { status: systemPreferences.getMediaAccessStatus("microphone") });
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) => {
+    const allowed = canCheckRendererPermission(permission, requestingOrigin, details);
+    if (allowed && permission === "media" && process.platform === "darwin") {
+      return systemPreferences.getMediaAccessStatus("microphone") === "granted";
+    }
+    return allowed;
+  });
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
     const mediaTypes = ("mediaTypes" in details ? details.mediaTypes : undefined) ?? [];
-    callback(canRequestRendererPermission(permission, webContents.getURL(), { mediaTypes }));
+    const allowed = canRequestRendererPermission(permission, webContents.getURL(), { mediaTypes });
+    if (allowed && permission === "media" && mediaTypes.includes("audio") && process.platform === "darwin") {
+      permissionLogger.info("Requesting macOS microphone access", {
+        status: systemPreferences.getMediaAccessStatus("microphone"),
+      });
+      void systemPreferences
+        .askForMediaAccess("microphone")
+        .then((granted) => {
+          permissionLogger.info("macOS microphone request completed", {
+            granted,
+            status: systemPreferences.getMediaAccessStatus("microphone"),
+          });
+          callback(granted);
+        })
+        .catch(() => callback(false));
+      return;
+    }
+    callback(allowed);
   });
 }
 

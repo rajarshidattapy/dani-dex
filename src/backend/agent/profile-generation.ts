@@ -191,7 +191,7 @@ export function profilePrompt(input: GenerateAgentProfileInput, sections: Sideba
 }
 
 export const KILO_PROFILE_ENDPOINT = "https://api.kilo.ai/api/gateway/chat/completions";
-export const KILO_PROFILE_MODEL = "stepfun/step-3.7-flash:free";
+export const KILO_PROFILE_MODEL = "kilo-auto/free";
 export interface GatewayRoute {
   endpoint: string;
   modelId: string;

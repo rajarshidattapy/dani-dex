@@ -44,6 +44,8 @@ export interface AgentApproval {
   permissions: AgentApprovalPermissions | null;
   /** A provider external-directory gate, not a read-only or permanent filesystem grant. */
   externalDirectory?: string;
+  /** One local result publication in the current assigned group, not file/network access. */
+  channelResult?: { text: string };
 }
 
 export function isAgentApproval(value: unknown): value is AgentApproval {
@@ -59,6 +61,8 @@ export function isAgentApproval(value: unknown): value is AgentApproval {
     isNullableBoundedString(value.reason, INPUT_LIMITS.messageText) &&
     isNullableBoundedString(value.grantRoot, INPUT_LIMITS.path) &&
     (value.externalDirectory === undefined || isBoundedString(value.externalDirectory, INPUT_LIMITS.path)) &&
+    (value.channelResult === undefined ||
+      (isDynamicRecord(value.channelResult) && isBoundedString(value.channelResult.text, INPUT_LIMITS.messageText))) &&
     (value.permissions === null || isAgentApprovalPermissions(value.permissions))
   );
 }

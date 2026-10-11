@@ -117,6 +117,7 @@ export interface AttentionBrowserHost {
 
 export interface AttentionRegistryOptions {
   conversation: ConversationRuntime;
+  hasChannelResultScope?: (agentId: string, turnId: string) => boolean;
   browser: AttentionBrowserHost;
   hostedSites: HostedSiteApprovals;
   routines: RoutineAttention;
@@ -144,6 +145,7 @@ export type RuntimeAttention = Pick<
  */
 export class AttentionRegistry {
   readonly #conversation: ConversationRuntime;
+  readonly #hasChannelResultScope: (agentId: string, turnId: string) => boolean;
   readonly #browser: AttentionBrowserHost;
   readonly #hostedSites: HostedSiteApprovals;
   readonly #routines: RoutineAttention;
@@ -157,6 +159,7 @@ export class AttentionRegistry {
 
   constructor(options: AttentionRegistryOptions) {
     this.#conversation = options.conversation;
+    this.#hasChannelResultScope = options.hasChannelResultScope ?? (() => false);
     this.#browser = options.browser;
     this.#hostedSites = options.hostedSites;
     this.#routines = options.routines;
@@ -230,6 +233,13 @@ export class AttentionRegistry {
   async respondToApproval(input: RespondToApprovalInput): Promise<void> {
     const pending = this.#approvals.get(input.requestId);
     if (!pending) throw new Error("This approval is no longer active.");
+    if (
+      input.decision === "accept" &&
+      pending.approval.channelResult &&
+      !this.#hasChannelResultScope(pending.approval.agentId, pending.approval.turnId)
+    ) {
+      throw new Error("The channel assignment changed. This result cannot be approved.");
+    }
     this.#routines.markRunningForTurn(getString(pending.params, "turnId"));
 
     if (pending.hostedSiteMutation) {
@@ -373,6 +383,8 @@ export class AttentionRegistry {
     }
 
     const externalDirectory = getString(request.params, "acpExternalDirectory");
+    const resultScope = getRecord(request.params, "acpChannelResult");
+    const resultText = resultScope ? getString(resultScope, "text") : null;
     const approval: AgentApproval = {
       requestId: request.id,
       agentId,
@@ -385,6 +397,9 @@ export class AttentionRegistry {
       grantRoot: getString(request.params, "grantRoot"),
       permissions: kind === "permissions" ? approvalPermissions(request.params) : null,
       ...(externalDirectory ? { externalDirectory } : {}),
+      ...(resultText && resultText.length <= 100_000 && this.#hasChannelResultScope(agentId, turnId)
+        ? { channelResult: { text: resultText } }
+        : {}),
     };
     if (this.#answerWithoutAsking(client, request, approval)) return;
     this.#approvals.set(request.id, {

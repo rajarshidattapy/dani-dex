@@ -36,6 +36,7 @@ import { commitStagedImport, pendingImportTexts, setPendingImportTexts } from ".
 import { CustomProviderDialog } from "../custom-providers/CustomProviderDialog";
 import { CustomProviderListDialog } from "../custom-providers/CustomProviderListDialog";
 import { createCustomProviderHostState } from "../custom-providers/custom-provider-host-state";
+import { TalkKeyPicker } from "../settings/TalkKeyPicker";
 import { fallbackProviderState } from "./onboarding-provider-state";
 
 export interface OnboardingFlowProps {
@@ -77,7 +78,7 @@ export interface OnboardingFlowProps {
   daniOnly?: boolean;
 }
 
-type OnboardingStep = "meet" | "computer" | "import" | "jobs";
+type OnboardingStep = "meet" | "computer" | "import" | "talk-key" | "jobs";
 type StepDirection = "forward" | "back";
 
 const PROVIDERS: Array<{ id: AgentProviderId; name: string; description: string }> = AGENT_PROVIDER_DESCRIPTORS.map(
@@ -426,6 +427,10 @@ export function OnboardingFlow(props: OnboardingFlowProps) {
       return;
     }
     if (step() === "import") {
+      moveTo("talk-key", "forward");
+      return;
+    }
+    if (step() === "talk-key") {
       moveTo("jobs", "forward");
       return;
     }
@@ -435,7 +440,8 @@ export function OnboardingFlow(props: OnboardingFlowProps) {
   function previousStep(): void {
     if (step() === "computer") moveTo("meet", "back");
     else if (step() === "import") moveTo("computer", "back");
-    else if (step() === "jobs") moveTo("import", "back");
+    else if (step() === "talk-key") moveTo("import", "back");
+    else if (step() === "jobs") moveTo("talk-key", "back");
   }
 
   async function finish(): Promise<void> {
@@ -453,7 +459,8 @@ export function OnboardingFlow(props: OnboardingFlowProps) {
     }
   }
 
-  const stepNumber = () => (step() === "meet" ? 1 : step() === "computer" ? 2 : step() === "import" ? 3 : 4);
+  const stepNumber = () =>
+    step() === "meet" ? 1 : step() === "computer" ? 2 : step() === "import" ? 3 : step() === "talk-key" ? 4 : 5;
 
   return (
     <main
@@ -465,8 +472,8 @@ export function OnboardingFlow(props: OnboardingFlowProps) {
       }}
     >
       <div class="onboarding-shell">
-        <nav class="onboarding-progress" aria-label={`Onboarding step ${stepNumber()} of 4`}>
-          <For each={[1, 2, 3, 4]}>
+        <nav class="onboarding-progress" aria-label={`Onboarding step ${stepNumber()} of 5`}>
+          <For each={[1, 2, 3, 4, 5]}>
             {(item) => <span class={item === stepNumber() ? "is-active" : item < stepNumber() ? "is-complete" : ""} />}
           </For>
         </nav>
@@ -702,6 +709,13 @@ export function OnboardingFlow(props: OnboardingFlowProps) {
               </section>
             </Match>
 
+            <Match when={step() === "talk-key"}>
+              <section class="onboarding-panel" aria-labelledby="onboarding-title">
+                <h1 id="onboarding-title">Choose your talk key</h1>
+                <p class="onboarding-description">Hold to speak. Release to let Dani get to work.</p>
+                <TalkKeyPicker platform={props.platform} />
+              </section>
+            </Match>
             <Match when={step() === "jobs"}>
               <section class="onboarding-panel onboarding-panel-jobs" aria-labelledby="onboarding-title">
                 <h1 id="onboarding-title">Give each agent a job</h1>

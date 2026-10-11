@@ -15,3 +15,12 @@ vi.mock("@dani-dex/contracts/online-services", () => ({
   // No model source by default: OpenCode shows its own catalog. Tests of the seam pass a source.
   DANI_DEX_MODEL_SOURCE: null,
 }));
+
+vi.mock("../packages/contracts/src/online-services", () => ({
+  DANI_DEX_WEB_ORIGIN: "https://dani-dex.example",
+  DANI_DEX_API_ORIGIN: "https://api.dani-dex.example",
+  DANI_DEX_TEAM_HOST_SUFFIX: ".dani-dex.example",
+  DANI_DEX_ANALYTICS_API_URL: "https://analytics.dani-dex.example/api",
+  DANI_DEX_HOSTED_SITE_SUFFIX: ".sites.dani-dex.example",
+  DANI_DEX_MODEL_SOURCE: null,
+}));

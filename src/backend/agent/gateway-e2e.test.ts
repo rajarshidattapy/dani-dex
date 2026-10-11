@@ -86,7 +86,7 @@ it("bounds mixed profile/team concurrency and cancels on shutdown", async () => 
     provider: "codex",
     profileGenerationRoute: () => ({
       provider: "opencode",
-      modelId: "stepfun/step-3.7-flash:free",
+      modelId: "kilo-auto/free",
       endpoint: "https://api.kilo.ai/api/gateway/chat/completions",
     }),
   });
@@ -97,7 +97,7 @@ it("bounds mixed profile/team concurrency and cancels on shutdown", async () => 
         JSON.stringify({
           data: [
             {
-              id: "stepfun/step-3.7-flash:free",
+              id: "kilo-auto/free",
               isFree: true,
               pricing: { prompt: "0", completion: "0" },
               architecture: { output_modalities: ["text"] },

@@ -84,14 +84,11 @@ const Agents = createSimpleContext({
     const [agentStatus, setAgentStatus] = createSignal<AgentStatus>(FALLBACK_STATUS);
     let openedAgentChatId: string | null = null;
 
-    const conversationAgents = createMemo(() => {
-      const chief = chiefConversationAgent(agentList());
-      return chief ? [chief] : [];
-    });
+    const conversationAgents = createMemo(() => agentList());
 
     const activeAgent = createMemo(() => {
       if (activeDirectMember()) return undefined;
-      return chiefConversationAgent(agentList());
+      return agentList().find((agent) => agent.id === activeAgentId()) ?? chiefConversationAgent(agentList());
     });
 
     function setActiveAgentId(
@@ -101,10 +98,14 @@ const Agents = createSimpleContext({
       if (!scopeIsCurrent()) return;
       updateActiveAgentId((current) => {
         const requested = typeof value === "function" ? value(current) : value;
-        const chief = chiefConversationAgent(roster);
-        const next = chief?.id ?? "";
-        if (requested && !chief) return current;
-        savedAgentId = "";
+        if (roster.length === 0 && requested) {
+          savedAgentId = requested;
+          return requested;
+        }
+        const next = roster.some((agent) => agent.id === requested)
+          ? requested
+          : (chiefConversationAgent(roster)?.id ?? roster[0]?.id ?? "");
+        savedAgentId = next;
         writeAgentSelection(selectionServerId, next);
         return next;
       });

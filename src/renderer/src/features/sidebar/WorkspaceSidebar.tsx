@@ -83,7 +83,7 @@ export function WorkspaceSidebar(props: { peopleEnabled: boolean }) {
 
   return (
     <Sidebar
-      channels={[]}
+      channels={channels.state.channels}
       deletedChannels={[]}
       activeChannelId={channels.state.selectedId}
       onSelectChannel={(id) => void channels.open(id)}

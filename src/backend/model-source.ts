@@ -81,7 +81,7 @@ export function modelSourceChoices<T extends { id: string; name?: string }>(
   return models.filter(
     (model) =>
       model.id.startsWith(`${source.id}/`) ||
-      model.id === "dani-kilo-worker/stepfun/step-3.7-flash:free" ||
+      model.id === "dani-kilo-worker/kilo-auto/free" ||
       (model.id.startsWith("opencode/") && isFreeOpencodeModel(model.id, model.name ?? model.id)),
   );
 }

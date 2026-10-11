@@ -47,6 +47,7 @@ import { createSettingsHostedSitesStore } from "./stores/hosted-sites-store";
 import { createSettingsMobileConnectStore } from "./stores/mobile-connect-store";
 import { createSettingsProfileStore } from "./stores/profile-store";
 import { createSettingsUpdatesStore } from "./stores/updates-store";
+import { TalkKeyPicker } from "./TalkKeyPicker";
 import type { VoiceKeyApi } from "./VoiceKeySettings";
 
 export interface SettingsModalProps {
@@ -109,7 +110,7 @@ export interface SettingsModalProps {
   restoreFocusTarget?: HTMLElement | null;
 }
 
-type SettingsTab = "general" | "computer-use" | "profile" | "mobile-connect" | "updates" | "hosted-sites";
+type SettingsTab = "general" | "hotkey" | "computer-use" | "profile" | "mobile-connect" | "updates" | "hosted-sites";
 
 /**
  * A tab holds the keys of its label and its header text, not the text itself. The list is read at
@@ -128,6 +129,12 @@ const navItems: ReadonlyArray<SettingsNavItem> = [
     value: "general",
     titleKey: "settings.tab.general.title",
     descriptionKey: "settings.tab.general.description",
+    icon: Settings,
+  },
+  {
+    value: "hotkey",
+    titleKey: "settings.tab.hotkey.title",
+    descriptionKey: "settings.tab.hotkey.description",
     icon: Settings,
   },
   {
@@ -232,6 +239,7 @@ export function SettingsModal(props: SettingsModalProps) {
     onChange(value: string) {
       if (
         value === "general" ||
+        value === "hotkey" ||
         value === "computer-use" ||
         value === "profile" ||
         value === "mobile-connect" ||
@@ -373,6 +381,9 @@ export function SettingsModal(props: SettingsModalProps) {
           />
         </Tabs.Content>
 
+        <Tabs.Content value="hotkey" class="settings-modal-tab-panel" data-tab="hotkey">
+          <TalkKeyPicker platform={props.appInfo?.platform ?? "darwin"} />
+        </Tabs.Content>
         <Tabs.Content value="computer-use" class="settings-modal-tab-panel" data-tab="computer-use">
           <ComputerUseSetup variant="settings" />
         </Tabs.Content>

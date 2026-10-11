@@ -129,6 +129,28 @@ Yesterday. It does not add live queue items, open routine runs, or queued channe
 starts no model turn.
 Use `bun run dev:seed --dry-run` to inspect the target and fixture counts without changing files.
 
+### Local voice in development
+
+The Whisper executable is a development asset, not a tracked source file. On macOS or Windows,
+prepare it once with `bun run voice:prepare-runtime`. This needs CMake and the platform's C++
+toolchain. On macOS, the script builds and checks both Intel and Apple silicon slices.
+
+Start the app with `bun run dev --isolated`. The wave button starts local duplex voice. The first
+voice use downloads and verifies the 539 MB Whisper model in the app; it does not need an OpenAI
+voice key. Hold the microphone button and release it to send one voice prompt. Escape, focus loss,
+pointer cancellation and leaving the view discard a recording that was not accepted for sending.
+Keyboard activation still starts editable dictation with explicit stop and send controls.
+
+Local replies use an installed browser system voice. If Chromium has no local voices on macOS,
+the main process uses `/usr/bin/say`. Only the main conversation renderer can request this speech.
+Reply text goes through standard input, not command arguments, and cannot open embedded speech
+commands. Interruption, renderer loss and shutdown stop the owned request. No cloud TTS fallback
+is selected.
+
+CPU inference with the current medium model can be slow. Verify actual speech, audible output,
+speaker-on interruption, the next turn and microphone cleanup on the target Mac. Unit tests and
+a running Whisper executable do not prove this physical-audio workflow.
+
 ### Marketplace launch catalog
 
 Seed the approved Dani-Dex team catalog locally with `bun run marketplace:seed:local`, then start or reuse `bun run dev --isolated`. Search **Dani-Dex** in Marketplace to review its Skills and Agents. This seed adds catalog records without resetting app data.

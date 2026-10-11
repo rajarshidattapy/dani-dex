@@ -4,6 +4,7 @@ import type { ThreadItem } from "../protocol";
 /** Ordered committed provider data, never an executable replay. */
 export type WorkerHistoryEntry =
   | { kind: "retirement"; turnId: string; reason: string }
+  | { kind: "cancellation-confirmed"; turnId: string }
   | { kind: "coverage"; turnId: string; version: 1; fromBeginning: true }
   | { kind: "steer"; turnId: string; input: ContentBlock[] }
   | { kind: "user"; turnId: string; input: ContentBlock[] }
@@ -22,6 +23,15 @@ export type WorkerHistoryEntry =
 export interface WorkerHistory {
   read(threadId: string): WorkerHistoryEntry[] | null;
   append(threadId: string, entry: WorkerHistoryEntry): void;
+}
+/** Only an explicit provider receipt resolves a cancellation retirement, never a local abort. */
+export function hasRetiredAttempt(entries: WorkerHistoryEntry[]): boolean {
+  const retired = new Set<string>();
+  for (const entry of entries) {
+    if (entry.kind === "retirement" || (entry.kind === "terminal" && entry.retiredAttempt)) retired.add(entry.turnId);
+    if (entry.kind === "cancellation-confirmed") retired.delete(entry.turnId);
+  }
+  return retired.size > 0;
 }
 export function historyData(entries: WorkerHistoryEntry[]): ContentBlock {
   return {

@@ -166,7 +166,7 @@ describe("Dani-Dex connected desktop shell", () => {
     await waitFor(() =>
       expect(window.danidex.setApprovalAutomation).toHaveBeenCalledWith({ agentId: "chief", autoApprove: true }),
     );
-    expect(screen.queryByRole("button", { name: /Sales Outbound, Outbound specialist/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Sales Outbound, Outbound specialist/ })).toBeInTheDocument();
     requestApproval("sales-outbound");
     expect(screen.getByRole("heading", { name: "Chief" })).toBeInTheDocument();
     write.resolve({ turbo: false, defaultAutoApprove: false, autoApproveOverrides: { chief: true } });
@@ -929,7 +929,7 @@ describe("Dani-Dex connected desktop shell", () => {
       }),
     );
 
-    expect(screen.queryByRole("button", { name: /Sales Outbound/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Sales Outbound/ }).length).toBeGreaterThan(0);
     await fireEvent.click(screen.getByRole("button", { name: /Coordinator, Chief of staff/ }));
     expect(await screen.findByRole("heading", { name: "Coordinator" })).toBeInTheDocument();
   });
@@ -954,7 +954,7 @@ describe("Dani-Dex connected desktop shell", () => {
     expect(window.danidex.agent.setAvatar).not.toHaveBeenCalled();
   });
 
-  it("changes only the Chief provider while worker profiles stay hidden", async () => {
+  it("changes only the Chief provider while worker profiles remain selectable", async () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
     await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
@@ -972,7 +972,7 @@ describe("Dani-Dex connected desktop shell", () => {
         reasoningEffort: "medium",
       }),
     );
-    expect(screen.queryByRole("button", { name: /Sales Outbound/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Sales Outbound/ }).length).toBeGreaterThan(0);
     expect(vi.mocked(window.danidex.agent.updateAgent).mock.calls.every(([input]) => input.agentId === "chief")).toBe(
       true,
     );
@@ -1055,7 +1055,7 @@ describe("Dani-Dex connected desktop shell", () => {
     );
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
-    expect(screen.queryByRole("button", { name: /Sales Outbound/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Sales Outbound/ }).length).toBeGreaterThan(0);
     const pinnedAgent = screen.getByRole("button", { name: "Chief, pinned agent" });
     emitAgentEvent?.({
       type: "conversation-page",

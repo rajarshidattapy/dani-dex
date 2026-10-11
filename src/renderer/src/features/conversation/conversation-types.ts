@@ -12,6 +12,8 @@ import type {
   DraftAttachment,
   FilePreview,
   ProviderRuntimeStatus,
+  QueueDelivery,
+  QueuedMessageReceipt,
   QueueSnapshot,
   ServerSummary,
   TeamPresenceSnapshot,
@@ -113,7 +115,13 @@ export interface ConversationProps {
     attachmentDraftIds: string[],
     replyToMessageId: string | null,
     target?: ConversationTarget,
-  ) => Promise<boolean>;
+  ) => Promise<QueuedMessageReceipt | null>;
+  onReadAgentReplyMessages: (
+    target: ConversationTarget,
+    delivery: QueueDelivery,
+    signal: AbortSignal,
+  ) => Promise<readonly AgentMessage[]>;
+  onInterruptDelivery: (deliveryId: string, target: ConversationTarget) => Promise<void>;
   onMarkRead: () => Promise<void>;
   onLoadOlder?: () => void;
   onLoadLatest?: () => Promise<void>;

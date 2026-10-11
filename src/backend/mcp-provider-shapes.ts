@@ -329,10 +329,10 @@ async function lookUpMcpCommand(trimmed: string, path: string | null): Promise<s
       });
       return pickWindowsExecutable(stdout, process.env.PATHEXT);
     }
-    // The assignment goes inside the command, not into the shell's environment: a login shell reads
-    // the user's profile first, and a profile that appends to `PATH` would undo an inherited one.
+    // An explicit search path needs no login profile: its startup files must not delay or change
+    // a configured environment. Only discovery without a path needs the user's login shell.
     const search = path === null ? "" : `PATH=${shellWord(path)} `;
-    const shell = loginShellCommand();
+    const shell = path === null ? loginShellCommand() : { command: "/bin/sh", args: ["-c"] };
     const { stdout } = await execFileAsync(
       shell.command,
       [...shell.args, `${search}command -v -- ${shellWord(trimmed)}`],

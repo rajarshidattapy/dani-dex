@@ -2430,7 +2430,7 @@ describe.sequential("AgentService: providers", () => {
         "You may list, read, create, edit, move, and delete files and run local commands in both directories.",
       );
       expect(params.developerInstructions).toContain("For every browser task");
-      expect(params.developerInstructions).toContain(`Use ${COMPUTER_USE_MCP_SERVER_NAME} for every GUI task`);
+      expect(params.developerInstructions).toContain("It is Dani-Dex's private persistent embedded browser");
       expect(params.developerInstructions).toContain("danidex_browser.submit_secret");
       expect(params.developerInstructions).toContain("danidex.create_routine");
       expect(params.developerInstructions).toContain("Never use ChatGPT Sites");

@@ -58,6 +58,10 @@ export function windowedSnapshotMessages<Message extends { id: string }>(
   if (!window.hasOlder) return [...snapshot];
   const loadedIds = new Set(loaded.map((message) => message.id));
   if (window.mode === "around") return snapshot.filter((message) => loadedIds.has(message.id));
-  const lastLoadedIndex = snapshot.reduce((last, message, index) => (loadedIds.has(message.id) ? index : last), -1);
-  return snapshot.filter((message, index) => loadedIds.has(message.id) || index > lastLoadedIndex);
+  const firstLoadedIndex = snapshot.findIndex((message) => loadedIds.has(message.id));
+  // A delayed final reply can arrive before a newer user message already in the window.
+  // Keep unseen messages inside the loaded range, not only after its final known ID.
+  return snapshot.filter(
+    (message, index) => loadedIds.has(message.id) || firstLoadedIndex < 0 || index >= firstLoadedIndex,
+  );
 }

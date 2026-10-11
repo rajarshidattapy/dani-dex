@@ -7,7 +7,9 @@ import { conversationContentSignature } from "./delivery-content";
 import { markIncompleteImageGeneration } from "./image-generation";
 import type { MailboxSync } from "./mailbox-sync";
 import type { ProviderRuntime } from "./provider-runtime";
+import { parseWorkerHistoryPayload, sessionWorkerHistory } from "./session-worker-history";
 import type { ThreadLifecycle } from "./thread-lifecycle";
+import { hasRetiredAttempt } from "./worker-history";
 
 export interface BootRecoveryHooks {
   executionThreads?(): Array<{ id: string; threadId: string }>;
@@ -18,10 +20,18 @@ export interface BootRecoveryHooks {
 export interface BootRecoveryOptions {
   store: AgentStore;
   mailbox: MailboxStore;
-  providers: ProviderRuntime;
-  conversation: ConversationRuntime;
-  mailboxSync: MailboxSync;
-  threads: ThreadLifecycle;
+  providers: Pick<ProviderRuntime, "clientFor" | "clientForAgent">;
+  conversation: Pick<
+    ConversationRuntime,
+    | "registerExecutionThread"
+    | "bindThread"
+    | "ensureSnapshot"
+    | "setSnapshot"
+    | "publishConversation"
+    | "isExecutionThread"
+  >;
+  mailboxSync: Pick<MailboxSync, "emitQueue" | "syncMailboxMessages">;
+  threads: Pick<ThreadLifecycle, "retireProviderSession" | "threadParams">;
   hooks: BootRecoveryHooks;
 }
 
@@ -45,10 +55,10 @@ export interface BootRecoveryOptions {
 export class BootRecovery {
   readonly #store: AgentStore;
   readonly #mailbox: MailboxStore;
-  readonly #providers: ProviderRuntime;
-  readonly #conversation: ConversationRuntime;
-  readonly #mailboxSync: MailboxSync;
-  readonly #threads: ThreadLifecycle;
+  readonly #providers: BootRecoveryOptions["providers"];
+  readonly #conversation: BootRecoveryOptions["conversation"];
+  readonly #mailboxSync: BootRecoveryOptions["mailboxSync"];
+  readonly #threads: BootRecoveryOptions["threads"];
   readonly #hooks: BootRecoveryHooks;
 
   constructor(options: BootRecoveryOptions) {
@@ -127,6 +137,28 @@ export class BootRecovery {
         });
       }
       this.#mailboxSync.emitQueue(delivery.recipientAgentId);
+    }
+    // The previous app process is gone at boot. Retire its quarantined wire, not its evidence.
+    // This does not replay a delivery; the next owner message creates a new session with history data.
+    for (const agent of this.threads()) {
+      if (!agent.threadId || agent.provider !== "opencode") continue;
+      if (this.#store.database.readActiveTurnId(agent.id, agent.threadId)) continue;
+      const session = this.#store.database.activeProviderSession(agent.threadId, agent.provider);
+      if (!session || this.#mailbox.hasUnfinishedDelivery(agent.id)) continue;
+      const payloads = this.#store.database.connection
+        .prepare(
+          "SELECT payload_json FROM orchestration_events WHERE aggregate_id = ? AND event_type = 'turn.worker-history' ORDER BY sequence LIMIT 5001",
+        )
+        .all(agent.threadId)
+        .map((row) => parseWorkerHistoryPayload(String(row.payload_json)));
+      if (payloads.length > 5000) continue;
+      const legacyOwner = this.#store.database
+        .listProviderSessions(agent.threadId)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]?.externalSessionId;
+      const entries = sessionWorkerHistory(payloads, session.externalSessionId, legacyOwner);
+      if (!hasRetiredAttempt(entries)) continue;
+      this.#conversation.bindThread(session.externalSessionId, agent.id, agent.threadId);
+      this.#threads.retireProviderSession(agent, session.externalSessionId);
     }
   }
 

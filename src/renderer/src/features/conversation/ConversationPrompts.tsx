@@ -140,6 +140,7 @@ export function ApprovalCard(props: {
   const unknownPermissionScope = () =>
     props.approval.kind === "permissions" &&
     !props.approval.externalDirectory &&
+    !props.approval.channelResult &&
     !props.approval.permissions?.network &&
     !(props.approval.permissions?.fileSystem.read.length || props.approval.permissions?.fileSystem.write.length);
   return (
@@ -182,6 +183,17 @@ export function ApprovalCard(props: {
               </p>
             )}
           </Show>
+          <Show when={props.approval.channelResult}>
+            {(result) => (
+              <div class="approval-command-block">
+                <p>
+                  Post this result once in the current assigned group chat. This gives no file, network, or other tool
+                  access.
+                </p>
+                <code>{result().text}</code>
+              </div>
+            )}
+          </Show>
           <PermissionDetails permissions={props.approval.permissions} />
           <Show when={unknownPermissionScope()}>
             <p role="alert">
@@ -199,9 +211,13 @@ export function ApprovalCard(props: {
           disabled={submitting() || unknownPermissionScope()}
           onClick={() => void submit("accept")}
         >
-          {submitting() ? "Sending…" : props.approval.externalDirectory ? "Allow once" : "Allow"}
+          {submitting()
+            ? "Sending…"
+            : props.approval.externalDirectory || props.approval.channelResult
+              ? "Allow once"
+              : "Allow"}
         </Button>
-        <Show when={props.onAlwaysAllow && !unknownPermissionScope()}>
+        <Show when={props.onAlwaysAllow && !unknownPermissionScope() && !props.approval.channelResult}>
           <Button
             ref={alwaysAllowButton}
             variant="secondary"

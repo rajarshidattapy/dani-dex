@@ -81,11 +81,22 @@ export class DaniDexDatabase {
     await this.#core.initialize();
   }
 
-  appendWorkerHistory(threadId: string, entry: import("./agent/worker-history").WorkerHistoryEntry): void {
+  appendWorkerHistory(
+    threadId: string,
+    entry: import("./agent/worker-history").WorkerHistoryEntry,
+    externalSessionId?: string,
+  ): void {
     const id = createHash("sha256").update(JSON.stringify(entry)).digest("hex");
     this.#core.dispatch(
-      `worker-history:${threadId}:${entry.turnId}:${entry.kind}:${id}`,
-      [{ aggregateType: "thread", aggregateId: threadId, eventType: "turn.worker-history", payload: { entry } }],
+      `worker-history:${threadId}:${externalSessionId ?? "legacy"}:${entry.turnId}:${entry.kind}:${id}`,
+      [
+        {
+          aggregateType: "thread",
+          aggregateId: threadId,
+          eventType: "turn.worker-history",
+          payload: { entry, ...(externalSessionId ? { externalSessionId } : {}) },
+        },
+      ],
       () => null,
     );
   }

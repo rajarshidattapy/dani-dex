@@ -317,6 +317,9 @@ async function collectCandidates(command: AgentProviderId, configuredPath: strin
     try {
       const { stdout } = await execFileAsync(loginShell.command, [...loginShell.args, `command -v ${command}`], {
         timeout: 5_000,
+        // Interactive shells can ignore TERM or intercept it in startup files. The discovery
+        // deadline must end this short-lived child before managed and known-path fallback.
+        killSignal: "SIGKILL",
         maxBuffer: 64 * 1024,
       });
       if (stdout.trim()) candidates.push(stdout.trim());
