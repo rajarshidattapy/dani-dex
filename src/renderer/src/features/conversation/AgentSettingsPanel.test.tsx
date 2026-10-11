@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@solidjs/testing-library";
+import { render as baseRender, fireEvent, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { STORY_AGENT_STATUS, STORY_AGENTS, STORY_MODELS } from "../../preview/fixtures";
 import { createMockDaniDex, type MockDaniDexControls } from "../../preview/mock-dani-dex";
@@ -6,6 +6,12 @@ import AgentSettingsPanel, { type AgentRuntimeSettings } from "./AgentSettingsPa
 import { AgentSkillsModal } from "./AgentSkillsModal";
 
 let mock: MockDaniDexControls | undefined;
+const render: typeof baseRender = (ui, options) => {
+  const view = baseRender(ui, options);
+  const settings = screen.queryByRole("button", { name: "Agent settings", exact: true });
+  if (settings) fireEvent.click(settings);
+  return view;
+};
 
 afterEach(() => {
   mock?.dispose();

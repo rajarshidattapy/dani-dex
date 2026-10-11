@@ -33,6 +33,7 @@ interface RoutineDraft {
 
 interface AgentRoutinesSettingsProps {
   /** Names the owner and owns every call. A channel passes `channelRoutinesPort` here. */
+  createOnOpen?: boolean;
   port: RoutinesPort;
   onCountChange: (count: number) => void;
   onBack?: () => void;
@@ -101,6 +102,17 @@ export function AgentRoutinesSettings(props: AgentRoutinesSettingsProps) {
       setLoading(true);
       setRoutinesLoaded(false);
       void loadRoutines();
+    },
+  );
+
+  let createdOnOpen = false;
+  createEffect(
+    () => ({ loaded: routinesLoaded(), create: props.createOnOpen }),
+    ({ loaded, create }) => {
+      if (loaded && create && !createdOnOpen) {
+        createdOnOpen = true;
+        createDraft();
+      }
     },
   );
 

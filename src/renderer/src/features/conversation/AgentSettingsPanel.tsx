@@ -1,5 +1,7 @@
 import { INPUT_LIMITS } from "@dani-dex/contracts/input-limits";
 import type {
+  AgentApproval,
+  AgentEvent,
   AgentModelId,
   AgentModelOption,
   AgentOperatingInstructions,
@@ -7,12 +9,13 @@ import type {
   AgentReasoningEffort,
   AgentStatus,
   AvatarImageInput,
+  BrowserTakeoverRequest,
   CustomProviderSummary,
   MarketplaceSkillDetail,
   ProviderRuntimeStatus,
   UpdateAgentInput,
 } from "@dani-dex/contracts/ipc";
-import { createEffect, createMemo, createStore, For, onCleanup, onSettled, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, createStore, For, onCleanup, onSettled, Show } from "solid-js";
 import { ProviderModelPicker, reasoningLabel } from "../../components/ProviderModelPicker";
 import {
   createSettingsPanelWidth,
@@ -43,6 +46,7 @@ import { AgentMemoriesModal } from "./AgentMemoriesModal";
 import { AgentOperatingInstructionsModal } from "./AgentOperatingInstructionsModal";
 import { AgentRoutinesSettings, type RoutineSelectionRequest } from "./AgentRoutinesSettings";
 import { AgentSkillsModal, type AgentSkillsMode, userAssignedSkills } from "./AgentSkillsModal";
+import { AgentWorkOverview } from "./AgentWorkOverview";
 import { agentMemoriesPort } from "./memories-port";
 import { agentRoutinesPort } from "./routines-port";
 import { SharedTablesModal } from "./SharedTablesModal";
@@ -56,6 +60,10 @@ export interface AgentRuntimeSettings {
 export type AgentRuntimeSettingsPatch = AgentRuntimeSettings | Pick<AgentRuntimeSettings, "reasoningEffort">;
 
 interface AgentSettingsPanelProps {
+  overviewPrompt?: Extract<AgentEvent, { type: "prompt" }>;
+  overviewApproval?: AgentApproval;
+  overviewTakeover?: BrowserTakeoverRequest;
+  onOpenOverviewAgent?: (id: string) => void;
   onOpenUsage: (trigger: HTMLButtonElement) => void;
   agent: AgentProfile;
   runtimeSettings: AgentRuntimeSettings;
@@ -136,6 +144,8 @@ interface TextSaveRequest {
 }
 
 export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
+  const [profileOpen, setProfileOpen] = createSignal(false);
+  const [newSchedule, setNewSchedule] = createSignal(false);
   const [panelWidth, setPanelWidth] = createSettingsPanelWidth();
   const [draft, setDraft] = createStore<AgentSettingsDraft>({
     avatar: {
@@ -577,8 +587,37 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
           closeLabel="Close details"
         />
       </Show>
-      <Show when={!draft.routines.open}>
+      <Show when={!draft.routines.open && !profileOpen()}>
         <SettingsPanelContent>
+          <AgentWorkOverview
+            agent={props.agent}
+            agents={props.agents ?? [props.agent]}
+            prompt={props.overviewPrompt}
+            approval={props.overviewApproval}
+            takeover={props.overviewTakeover}
+            onOpenAgent={props.onOpenOverviewAgent}
+            onSettings={() => setProfileOpen(true)}
+            onChannels={() => setProfileOpen(true)}
+            onCreateSchedule={() => {
+              setNewSchedule(true);
+              setDraft((s) => {
+                s.routines.open = true;
+              });
+            }}
+            onManageSchedules={() => {
+              setNewSchedule(false);
+              setDraft((s) => {
+                s.routines.open = true;
+              });
+            }}
+          />
+        </SettingsPanelContent>
+      </Show>
+      <Show when={!draft.routines.open && profileOpen()}>
+        <SettingsPanelContent>
+          <Button variant="ghost" onClick={() => setProfileOpen(false)}>
+            Back to Overview
+          </Button>
           <div ref={(element) => (avatarPickerRoot = element)} class="agent-settings-avatar-picker">
             <Popover.Root
               open={draft.avatar.pickerOpen}
@@ -813,6 +852,7 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
       <Show when={draft.routines.open}>
         <div class="agent-routines-overlay">
           <AgentRoutinesSettings
+            createOnOpen={newSchedule()}
             port={routinesPort()}
             onCountChange={(count) =>
               setDraft((state) => {
