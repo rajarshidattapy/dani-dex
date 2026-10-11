@@ -454,3 +454,19 @@ export interface RemoteDesktopSelectDisplayInput {
 
 import { INPUT_LIMITS } from "./input-limits";
 import { isBoolean, isDynamicRecord, isNumber, isString } from "./runtime-values";
+
+export interface TelegramGatewayStatus {
+  uncertainReplies:Array<{replyId:string;conversationId:string}>;
+  replies:Array<{replyId:string;conversationId:string;senderId:string;body:string}>;
+  configured: boolean;
+  enabled: boolean;
+  error: string | null;
+  pending: Array<{
+    eventId: string;
+    conversationId: string;
+    senderId: string;
+    body: string;
+    generation: number;
+    nextOffset: number;
+  }>;
+}

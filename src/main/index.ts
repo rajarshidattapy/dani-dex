@@ -300,6 +300,7 @@ function attachWindowsSessionEndHandlers(window: BrowserWindow): void {
 
 function registerIpcHandlers(
   {
+    telegram,
     service,
     providerRuntimes,
     providerCredentials,
@@ -398,6 +399,7 @@ function registerIpcHandlers(
     ...marketplaceAgentIpcHandlers({ marketplaceAgents }),
     ...updateIpcHandlers({ updater, updatePreferenceFile }),
     ...teamIpcHandlers({
+      telegram,
       host,
       remoteDesktop,
       remoteServers,

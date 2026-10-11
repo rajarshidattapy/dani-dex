@@ -101,6 +101,7 @@ import {
 } from "./development-remote-bootstrap";
 import { performDynamicIslandCriticalAction } from "./dynamic-island-actions";
 import { DynamicIslandWindowController } from "./dynamic-island-window";
+import { TelegramController } from "./telegram-controller";
 import { HostService } from "./host-service";
 import { HostUpdateCoordinator } from "./host-update-coordinator";
 import { HostedSiteDesktopService } from "./hosted-site-service";
@@ -248,6 +249,7 @@ export interface ApplicationServiceContext {
 
 /** Everything the entry point wires up, registers IPC handlers against, and shuts down. */
 export interface ApplicationServices {
+  telegram:TelegramController;
   service: AgentService;
   providerRuntimes: ProviderRuntimeManager;
   providerCredentials: ProviderCredentialStore;
@@ -954,6 +956,12 @@ export async function createApplicationServices({
    * reach onboarding; a server that cannot start is reported at hand-off like any other.
    */
   if (!setupState.completed || service.enabledMcpServers().length > 0) providerRuntimes.ensureToolRuntimes();
+  const telegram = new TelegramController({database:store.database,agents:service,credentialPath:join(app.getPath("userData"),"telegram-credentials.json"),cipher:{
+    encrypt:(value)=>{if(!safeStorage.isEncryptionAvailable()||(process.platform==="linux"&&safeStorage.getSelectedStorageBackend()==="basic_text"))throw new Error("Secure Telegram storage is unavailable.");return safeStorage.encryptString(value);},
+    decrypt:(value)=>{if(!safeStorage.isEncryptionAvailable()||(process.platform==="linux"&&safeStorage.getSelectedStorageBackend()==="basic_text"))throw new Error("Secure Telegram storage is unavailable.");return safeStorage.decryptString(value);}
+  }});
+  await telegram.initialize();
+  teardown.push(0,"Telegram gateway",()=>telegram.stop());
   // After `new AgentService`, which owns the channels: the layout files channels beside agents, and
   // reconciling against the agents alone would read every channel as gone and drop where it sits.
   await sidebarLayout.reconcileAgents(service.sidebarChatIds());
@@ -1423,6 +1431,7 @@ export async function createApplicationServices({
   );
 
   return {
+    telegram,
     service,
     providerRuntimes,
     providerCredentials,

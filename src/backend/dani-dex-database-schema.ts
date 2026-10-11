@@ -1,3 +1,4 @@
+import { GATEWAY_SCHEMA_SQL } from "./gateway-schema";
 import type { DatabaseSync } from "node:sqlite";
 import { COMPUTER_USE_MCP_SERVER_NAME } from "@dani-dex/contracts/ipc";
 import { type DynamicRecord, isDynamicRecord, isNumber, isString } from "@dani-dex/contracts/runtime-values";
@@ -390,7 +391,9 @@ function substituteOnce(source: string, search: string, replacement: string): st
   if (index === -1 || source.indexOf(search, index + search.length) !== -1) {
     throw new Error("The latest Dani-Dex schema could not be derived from the v8 baseline.");
   }
-  return `${source.slice(0, index)}${replacement}${source.slice(index + search.length)}`;
+  return `${source.slice(0, index)}${replacement}${source.slice(index + search.length)}
+${GATEWAY_SCHEMA_SQL}
+`;
 }
 
 export interface DaniDexMigrationOptions {
@@ -488,6 +491,7 @@ const MIGRATIONS: readonly DaniDexMigration[] = [
       db.exec(OPERATING_INSTRUCTIONS_SCHEMA_SQL);
     },
   },
+  {version:24,up:db=>db.exec(GATEWAY_SCHEMA_SQL)},
 ];
 
 const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? BASELINE_SCHEMA_VERSION;

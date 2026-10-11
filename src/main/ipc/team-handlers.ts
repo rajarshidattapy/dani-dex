@@ -26,7 +26,10 @@ import {
 } from "./server-inputs";
 import { requireString, stringPayload } from "./validation";
 
+import type { TelegramController } from "../telegram-controller";
+
 interface TeamIpcDependencies {
+  telegram: TelegramController;
   host: HostService;
   remoteDesktop: RemoteDesktopManager;
   remoteServers: RemoteServerManager;
@@ -35,6 +38,7 @@ interface TeamIpcDependencies {
 
 export function teamIpcHandlers({
   host,
+  telegram,
   remoteDesktop,
   remoteServers,
   takePendingInvite,
@@ -128,6 +132,15 @@ export function teamIpcHandlers({
       ),
     },
     host: {
+      telegramReject:payloadHandler(stringPayload("eventId",64),eventId=>telegram.rejectInbound(eventId)),
+      telegramStatus: handler(() => telegram.status()),
+      telegramConfigure: payloadHandler((value:unknown)=>requireString(value,"token",256), token=>telegram.configure(token)),
+      telegramPair: payloadHandler((value:unknown)=>{if(!value || typeof value!=="object")throw new Error("Pairing required.");const v=value as Record<string,unknown>;return {conversationId:requireString(v.conversationId,"conversationId",64),senderId:requireString(v.senderId,"senderId",64)};},v=>telegram.pair(v.conversationId,v.senderId)),
+      telegramEnable: handler(()=>telegram.enable()),
+      telegramRevoke: handler(()=>telegram.revoke()),
+      telegramApproveReply:payloadHandler((value:unknown)=>{if(!value||typeof value!=="object")throw new Error("Reply review required.");const v=value as Record<string,unknown>;return {replyId:requireString(v.replyId,"replyId",256),body:requireString(v.body,"body",4096),conversationId:requireString(v.conversationId,"conversationId",64),senderId:requireString(v.senderId,"senderId",64)};},v=>telegram.approveReply(v.replyId,v.body,v.conversationId,v.senderId)),
+      telegramApprove: payloadHandler((value:unknown)=>{if(!value || typeof value!=="object")throw new Error("Review required.");const v=value as Record<string,unknown>;return {eventId:requireString(v.eventId,"eventId",64),body:requireString(v.body,"body",32000),conversationId:requireString(v.conversationId,"conversationId",64),senderId:requireString(v.senderId,"senderId",64)};},v=>telegram.approveInbound(v.eventId,v.body,v.conversationId,v.senderId)),
+
       getRcGateway: handler(() => host.getRcGateway()),
       setRcGateway: payloadHandler((value: unknown) => { if (typeof value !== "boolean") throw new Error("RC enabled must be a boolean."); return value; }, (enabled) => host.setRcGateway(enabled)),
       createDevicePairingLink: payloadHandler(stringPayload("origin", 2048), (origin) => host.createDevicePairingLink(origin)),

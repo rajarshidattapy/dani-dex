@@ -469,6 +469,15 @@ export interface PluginsDesktopApi {
 }
 
 export interface HostDesktopApi {
+  telegramReject:(eventId:string)=>Promise<void>;
+  telegramStatus: () => Promise<import("./ipc-team-host").TelegramGatewayStatus>;
+  telegramConfigure: (token:string) => Promise<void>;
+  telegramPair: (input:{conversationId:string;senderId:string}) => Promise<void>;
+  telegramEnable: () => Promise<void>;
+  telegramRevoke: () => Promise<void>;
+  telegramApproveReply: (input:{replyId:string;body:string;conversationId:string;senderId:string})=>Promise<void>;
+  telegramApprove: (input:{eventId:string;body:string;conversationId:string;senderId:string}) => Promise<void>;
+
   getRcGateway: () => Promise<import("./ipc-team-host").RcGatewayStatus>;
   setRcGateway: (enabled: boolean) => Promise<import("./ipc-team-host").RcGatewayStatus>;
   createDevicePairingLink: (origin: string) => Promise<{ url: string; expiresAt: number; code: string; appUrl: string }>;

@@ -1228,7 +1228,15 @@ export function installDanidexStub(): void {
         onOpenListing: vi.fn(pluginListingBridge.subscribe),
       },
       host: {
-        getRcGateway: vi.fn().mockResolvedValue({ enabled: false, phase: "off", origin: null, previousOrigin: null, changedAt: null, message: null }),
+        telegramStatus: async () => ({configured:false,enabled:false,error:null,pending:[],replies:[],uncertainReplies:[]}),
+    telegramConfigure: async () => {},
+    telegramPair: async () => {},
+    telegramEnable: async () => {},
+    telegramRevoke: async () => {},
+    telegramApprove: async () => {},
+    telegramApproveReply: async () => {},
+    telegramReject: async () => {},
+    getRcGateway: vi.fn().mockResolvedValue({ enabled: false, phase: "off", origin: null, previousOrigin: null, changedAt: null, message: null }),
         setRcGateway: vi.fn(),
         createDevicePairingLink: vi.fn().mockRejectedValue(new Error("No pairing host configured in this test.")),
         getStatus: vi.fn().mockResolvedValue({
