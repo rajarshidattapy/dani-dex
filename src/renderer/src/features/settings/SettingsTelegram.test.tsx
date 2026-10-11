@@ -6,7 +6,7 @@ it("pairs exact identities and sends exact owner reviewed text, never enabling o
     configured: true,
     enabled: false,
     error: null,
-    replies:[],pending: [
+    uncertainReplies:[{replyId:"r",conversationId:"12"}],replies:[],pending: [
       { eventId: "4", conversationId: "12", senderId: "7", body: "Reviewed request", generation: 1, nextOffset: 0 },
     ],
   };
