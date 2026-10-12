@@ -445,12 +445,19 @@ it("event runs reuse durable command receipts after restart and do not absorb ex
   const first = routines.createEventRun(routine, event);
   expect(routines.createEventRun(routine, event).id).toBe(first.id);
   expect(first.instruction).toBe(routine.instruction);
+  const manual = routines.createRun(routine, null, "manual", new Date().toISOString());
+  expect(routines.pendingRuns().map((r) => r.id)).toEqual([manual.id]);
   const root = database.userDataPath;
   database.close();
   const reopened = new DaniDexDatabase(root);
   await reopened.initialize();
   const again = new AgentRoutineStore(reopened);
   expect(again.createEventRun(routine, event).id).toBe(first.id);
+  expect(again.pendingRuns().map((r) => r.id)).toEqual([manual.id]);
+  reopened.connection
+    .prepare("DELETE FROM orchestration_command_receipts WHERE command_id LIKE 'routine-run:event:%'")
+    .run();
+  expect(again.pendingRuns().map((r) => r.id)).toEqual([manual.id]);
   expect(() => again.createEventRun(routine, "external instruction")).toThrow("Hashed");
   reopened.close();
 });

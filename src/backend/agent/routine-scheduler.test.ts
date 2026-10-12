@@ -473,14 +473,8 @@ it("prepares one durable owner-event run and checks source again at mailbox comm
     timezone: "UTC",
     schedule: { kind: "daily", time: "09:00" },
   });
-  const snapshot = { agentId: agent.id, threadId: agent.threadId, messages: [] };
-  const conversation = {
-    requireKnownAgent: (id: string) => {
-      if (id !== agent.id) throw Error("Unknown agent");
-    },
-    ensureSnapshot: () => snapshot,
-    emitConversation: vi.fn(),
-  } as unknown as import("./conversation-runtime").ConversationRuntime;
+  const { ConversationRuntime } = await import("./conversation-runtime");
+  const conversation = new ConversationRuntime(store, vi.fn(), () => [agent]);
   const hooks = {
     emit: vi.fn(),
     emitError: vi.fn(),
@@ -504,12 +498,17 @@ it("prepares one durable owner-event run and checks source again at mailbox comm
       () => {},
     ),
   });
+  // Simulate a crash after event-run creation but before mailbox commit. Startup has no source validator.
+  const unattached = routines.createEventRun(routine, "c".repeat(64));
+  await scheduler.resumePendingRuns();
+  expect(routines.listRuns(agent.id, routine.id, 10).find((r) => r.id === unattached.id)?.deliveryId).toBeNull();
+  expect(hooks.scheduleDrain).not.toHaveBeenCalled();
   const validate = vi.fn();
   const run = await scheduler.receiveWatchEvent(agent.id, routine.id, "a".repeat(64), validate);
   const again = await scheduler.receiveWatchEvent(agent.id, routine.id, "a".repeat(64), validate);
   expect(run.id).toBe(again.id);
   expect(run.deliveryId).toBeTruthy();
-  expect(routines.listRuns(agent.id, routine.id, 10)).toHaveLength(1);
+  expect(routines.listRuns(agent.id, routine.id, 10)).toHaveLength(2);
   expect(validate.mock.calls.length).toBeGreaterThanOrEqual(4);
   expect(run.instruction).toBe("Owner task only.");
   await expect(
@@ -517,5 +516,5 @@ it("prepares one durable owner-event run and checks source again at mailbox comm
       throw Error("Source revoked");
     }),
   ).rejects.toThrow("revoked");
-  expect(routines.listRuns(agent.id, routine.id, 10)).toHaveLength(1);
+  expect(routines.listRuns(agent.id, routine.id, 10)).toHaveLength(2);
 });

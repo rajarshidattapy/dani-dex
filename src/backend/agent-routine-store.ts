@@ -92,7 +92,14 @@ export class AgentRoutineStore extends RoutineStore {
   }
 
   pendingRuns(): RoutineRun[] {
-    return this.pendingRunRows().map(toRun);
+    // Event runs need the original source validator. Generic startup recovery cannot supply it.
+    // The creation event remains the durable discriminator even if a receipt is pruned.
+    const eventRun = this.database.connection.prepare(
+      "SELECT 1 FROM orchestration_events WHERE aggregate_type='routine-run' AND command_id LIKE 'routine-run:event:%' AND json_extract(payload_json,'$.runId')=? LIMIT 1",
+    );
+    return this.pendingRunRows()
+      .filter((run) => !eventRun.get(run.id))
+      .map(toRun);
   }
 
   activeRuns(agentId: string, routineId: string): RoutineRun[] {
