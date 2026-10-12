@@ -59,6 +59,27 @@ it("local inspection omits credentials, grant revoke and peer disconnect cancel 
     expect(malformed.state).toBe("render-error");
     control.decidePeer({ review: malformed, decision: "decline", grantId: null });
     expect(control.peerInbox().some((r) => r.requestId === "malformed")).toBe(false);
+    peer.receive(
+      { contactId: "unknown", transportPrincipal: "unknown", requestId: "uncertain", contextId: "local" },
+      {
+        oip: "1",
+        intent: "request_freebusy",
+        subject: "review",
+        on_behalf_of: { handle: "claimed", display: "Claimed" },
+        payload: { window: { from: "2026-10-12T10:00:00Z", to: "2026-10-12T11:00:00Z" } },
+        needs_consent: true,
+      },
+      "Untrusted",
+    );
+    db.connection
+      .prepare("INSERT INTO projection_peer_effects VALUES(?,?,?,?,NULL,NULL,'uncertain',NULL)")
+      .run("uncertain", peer.reviewHash("uncertain"), "calendar.freebusy", JSON.stringify(["unknown"]));
+    const uncertain = control.peerInbox().find((r) => r.requestId === "uncertain");
+    if (!uncertain) throw Error("Missing uncertain review");
+    expect(() => control.decidePeer({ review: uncertain, decision: "decline", grantId: null })).toThrow(
+      "reconciliation",
+    );
+    expect(control.peerInbox().find((r) => r.requestId === "uncertain")?.state).toBe("uncertain");
     control.revokeGrant(grant);
     expect(peer.state("r")).toBe("cancelled");
     control.disconnectPeer("sam");
