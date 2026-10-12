@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { PeerOwnerReview, V2ControlStatus } from "@dani-dex/contracts/ipc";
+import { type DynamicRecord, isDynamicRecord } from "@dani-dex/contracts/runtime-values";
 import { redactContextText } from "@dani-dex/logging";
 import type { DaniDexDatabase } from "../backend/dani-dex-database";
 import { PeerKeyStore } from "../backend/peer-key-store";
@@ -19,6 +21,7 @@ export class V2Control {
       .all()
       .map((r) => {
         try {
+          const envelope = validatePeerEnvelope(JSON.parse(String(r.envelope_json)));
           return {
             requestId: String(r.request_id),
             contactId: String(r.contact_id),
@@ -32,11 +35,9 @@ export class V2Control {
             ),
             text: String(r.text),
             displayText: redactContextText(String(r.text)),
-            displayEnvelope: redactPeerView(
-              JSON.parse(String(r.envelope_json)),
-            ) as import("@dani-dex/contracts/runtime-values").DynamicRecord,
+            displayEnvelope: redactPeerRecord(envelope),
             envelopeHash: new PeerTrustStore(this.database).reviewHash(String(r.request_id)),
-            envelope: JSON.parse(String(r.envelope_json)),
+            envelope,
             state: r.effect_state === "uncertain" ? "uncertain" : String(r.state),
             deadline: r.deadline === null ? null : Number(r.deadline),
           };
@@ -59,14 +60,8 @@ export class V2Control {
   decidePeer(input: { review: PeerOwnerReview; decision: "accept" | "decline"; grantId: string | null }): void {
     if (input.decision !== "decline") throw Error("Peer acceptance and effects remain disabled.");
     const r = this.peerInbox().find((r) => r.requestId === input.review.requestId);
-    if (
-      !r ||
-      Object.keys(r).some(
-        (k) =>
-          JSON.stringify(r[k as keyof PeerOwnerReview]) !== JSON.stringify(input.review[k as keyof PeerOwnerReview]),
-      )
-    )
-      throw Error("Peer review no longer matches.");
+    if (!r || !isDeepStrictEqual(r, input.review)) throw Error("Peer review no longer matches.");
+    if (r.state === "uncertain") throw Error("Uncertain peer effects need reconciliation, not dismissal.");
     if (r.state === "render-error" && input.decision !== "decline")
       throw Error("Unrenderable review cannot be accepted.");
     if (r.state !== "render-error") validatePeerEnvelope(r.envelope);
@@ -84,7 +79,7 @@ export class V2Control {
         ],
         (db) => {
           db.prepare(
-            "UPDATE projection_peer_requests SET state='declined' WHERE request_id=? AND state='message-taker'",
+            "UPDATE projection_peer_requests SET state='declined' WHERE request_id=? AND state IN ('message-taker','owner-review','consent-pending') AND request_id NOT IN (SELECT request_id FROM projection_peer_effects WHERE state IN ('executing','uncertain','completed'))",
           ).run(r.requestId);
           return null;
         },
@@ -135,10 +130,15 @@ export class V2Control {
   }
 }
 
-function redactPeerView(value: unknown): unknown {
+type PeerDisplayValue = string | number | boolean | null | PeerDisplayValue[] | { [key: string]: PeerDisplayValue };
+function redactPeerRecord(value: DynamicRecord): DynamicRecord {
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, redactPeerView(child)]));
+}
+function redactPeerView(value: unknown): PeerDisplayValue {
   if (typeof value === "string") return redactContextText(value);
+  if (typeof value === "number" || typeof value === "boolean" || value === null) return value;
   if (Array.isArray(value)) return value.map(redactPeerView);
-  if (value && typeof value === "object")
+  if (isDynamicRecord(value))
     return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, redactPeerView(child)]));
-  return value;
+  return null;
 }

@@ -37,6 +37,28 @@ it("local inspection omits credentials, grant revoke and peer disconnect cancel 
     expect(() => control.decidePeer({ review: control.peerInbox()[0], decision: "accept", grantId: grant })).toThrow(
       "disabled",
     );
+    peer.receive(
+      { contactId: "unknown", transportPrincipal: "unknown", requestId: "bad", contextId: "local" },
+      {
+        oip: "1",
+        intent: "ask",
+        subject: "review",
+        on_behalf_of: { handle: "claimed", display: "Claimed" },
+        payload: { question: "Review" },
+        needs_consent: true,
+      },
+      "Untrusted",
+    );
+    db.connection
+      .prepare(
+        "INSERT INTO projection_peer_requests(request_id,contact_id,transport_principal,context_id,principal_json,envelope_json,text,state,grant_id,deadline) SELECT 'malformed',contact_id,transport_principal,context_id,principal_json,'{}',text,state,grant_id,deadline FROM projection_peer_requests WHERE request_id='bad'",
+      )
+      .run();
+    const malformed = control.peerInbox().find((r) => r.requestId === "malformed");
+    if (!malformed) throw Error("Missing malformed review");
+    expect(malformed.state).toBe("render-error");
+    control.decidePeer({ review: malformed, decision: "decline", grantId: null });
+    expect(control.peerInbox().some((r) => r.requestId === "malformed")).toBe(false);
     control.revokeGrant(grant);
     expect(peer.state("r")).toBe("cancelled");
     control.disconnectPeer("sam");
