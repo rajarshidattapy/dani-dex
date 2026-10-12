@@ -125,6 +125,13 @@ it("cancel, timeout, wrong owner and source revoke stay terminal with no run att
     const b = watches.create(input);
     await watches.processDue(new Date(Date.now() + 60001));
     expect(() => watches.match(b, "any")).toThrow("resolved");
+    const inactive = watches.create(input);
+    routines.update({ agentId: "chief", routineId: routine.id, active: false });
+    watches.reconcileSources();
+    expect(
+      db.connection.prepare("SELECT state FROM projection_routine_watches WHERE watch_id=?").get(inactive)?.state,
+    ).toBe("blocked");
+    routines.update({ agentId: "chief", routineId: routine.id, active: true });
     const c = watches.create(input);
     gateway.ingest("g", {
       eventId: "new",
