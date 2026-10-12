@@ -503,6 +503,27 @@ it("prepares one durable owner-event run and checks source again at mailbox comm
   await scheduler.resumePendingRuns();
   expect(routines.listRuns(agent.id, routine.id, 10).find((r) => r.id === unattached.id)?.deliveryId).toBeNull();
   expect(hooks.scheduleDrain).not.toHaveBeenCalled();
+  // A committed mailbox receipt may be reconciled without creating another delivery.
+  const committed = await mailbox.enqueue({
+    sender: {
+      kind: "routine",
+      routineId: routine.id,
+      runId: unattached.id,
+      routineName: routine.name,
+      scheduledFor: unattached.scheduledFor,
+    },
+    recipientAgentIds: [agent.id],
+    text: routine.instruction,
+    draftIds: [],
+    idempotencyKey: `routine:manual:${unattached.id}`,
+  });
+  const enqueue = vi.spyOn(mailbox, "enqueue");
+  await scheduler.resumePendingRuns();
+  expect(routines.listRuns(agent.id, routine.id, 10).find((r) => r.id === unattached.id)?.deliveryId).toBe(
+    committed.deliveries[0].id,
+  );
+  expect(enqueue).not.toHaveBeenCalled();
+  enqueue.mockRestore();
   const validate = vi.fn();
   const run = await scheduler.receiveWatchEvent(agent.id, routine.id, "a".repeat(64), validate);
   const again = await scheduler.receiveWatchEvent(agent.id, routine.id, "a".repeat(64), validate);

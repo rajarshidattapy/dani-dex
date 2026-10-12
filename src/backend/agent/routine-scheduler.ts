@@ -401,6 +401,22 @@ export class RoutineScheduler implements RoutineDueSource {
   }
 
   async resumePendingRuns(): Promise<void> {
+    // A mailbox commit can outlive its run attachment. Reconcile existing receipts only;
+    // absence is never authority to enqueue a source event during startup.
+    for (const run of this.#routines.pendingEventRuns()) {
+      const existing = this.#mailbox.deliveryForKey(`routine:manual:${run.id}`);
+      const delivery = existing?.delivery;
+      if (
+        !delivery ||
+        delivery.recipientAgentId !== run.agentId ||
+        delivery.sender.kind !== "routine" ||
+        delivery.sender.runId !== run.id
+      )
+        continue;
+      this.#routines.attachDelivery(run.id, delivery.id);
+      this.reconcileDelivery(delivery);
+    }
+
     for (const run of this.#routines.pendingRuns()) {
       await this.#enqueueRun(run).catch((error) => {
         this.#hooks.emitError("routine_delivery_recovery_failed", error, run.agentId);
