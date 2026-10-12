@@ -455,3 +455,67 @@ describe.sequential("RoutineScheduler: routine mutations, runs and tools", () =>
     );
   });
 });
+
+it("prepares one durable owner-event run and checks source again at mailbox commit", async () => {
+  const { RoutineScheduler } = await import("./routine-scheduler");
+  const { RoutineTimer } = await import("../routine-timer");
+  const { AgentRoutineStore } = await import("../agent-routine-store");
+  const { store, mailbox } = stores(root);
+  await store.initialize();
+  await mailbox.initialize();
+  const agent = await store.getOrCreate("chief", "Chief");
+  const routines = new AgentRoutineStore(store.database);
+  const routine = routines.create({
+    agentId: agent.id,
+    name: "Watch preparation",
+    instruction: "Owner task only.",
+    active: true,
+    timezone: "UTC",
+    schedule: { kind: "daily", time: "09:00" },
+  });
+  const snapshot = { agentId: agent.id, threadId: agent.threadId, messages: [] };
+  const conversation = {
+    requireKnownAgent: (id: string) => {
+      if (id !== agent.id) throw Error("Unknown agent");
+    },
+    ensureSnapshot: () => snapshot,
+    emitConversation: vi.fn(),
+  } as unknown as import("./conversation-runtime").ConversationRuntime;
+  const hooks = {
+    emit: vi.fn(),
+    emitError: vi.fn(),
+    emitQueue: vi.fn(),
+    scheduleDrain: vi.fn(),
+    interrupt: vi.fn(async () => {}),
+    awaitDrain: () => undefined,
+    syncMailboxMessages: vi.fn(),
+    listAgents: () => [agent],
+    excludedAgents: () => new Set<string>(),
+    isRunning: () => false,
+  };
+  const scheduler = new RoutineScheduler({
+    store,
+    mailbox,
+    conversation,
+    hooks,
+    timer: new RoutineTimer(
+      () => [],
+      () => false,
+      () => {},
+    ),
+  });
+  const validate = vi.fn();
+  const run = await scheduler.receiveWatchEvent(agent.id, routine.id, "a".repeat(64), validate);
+  const again = await scheduler.receiveWatchEvent(agent.id, routine.id, "a".repeat(64), validate);
+  expect(run.id).toBe(again.id);
+  expect(run.deliveryId).toBeTruthy();
+  expect(routines.listRuns(agent.id, routine.id, 10)).toHaveLength(1);
+  expect(validate.mock.calls.length).toBeGreaterThanOrEqual(4);
+  expect(run.instruction).toBe("Owner task only.");
+  await expect(
+    scheduler.receiveWatchEvent(agent.id, routine.id, "b".repeat(64), () => {
+      throw Error("Source revoked");
+    }),
+  ).rejects.toThrow("revoked");
+  expect(routines.listRuns(agent.id, routine.id, 10)).toHaveLength(1);
+});
