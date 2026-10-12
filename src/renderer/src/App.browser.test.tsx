@@ -1078,7 +1078,7 @@ describe("Dani-Dex connected desktop shell", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Office PC server" }));
     await waitFor(() => expect(resolveOfficeSelection).toBeDefined());
     expect(screen.queryByRole("complementary", { name: "Browser" })).not.toBeInTheDocument();
-    const computerButton = screen.getByRole("button", { name: "Open computer" });
+    const computerButton = screen.getByRole("button", { name: "Hide computer" });
     expect(computerButton).toBeDisabled();
     await fireEvent.click(computerButton);
     await fireEvent.click(remoteTab);
