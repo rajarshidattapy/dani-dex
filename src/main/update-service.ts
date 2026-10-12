@@ -334,7 +334,9 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     if (!enabled) this.#clearAutoInstallTimer();
     else if (this.#status.phase === "ready") this.#scheduleAutoInstall();
     if (this.#options.openManualDownload) return;
-    if (enabled && this.#options.enabled && this.#status.phase === "available") void this.downloadUpdate();
+    if (!enabled || !this.#started || !this.#options.enabled || this.#managedByHost || this.#teardownCommitted) return;
+    if (this.#canDownload()) void this.downloadUpdate();
+    else if (["idle", "up-to-date", "error"].includes(this.#status.phase)) void this.checkForUpdates();
   }
 
   /** Host-managed sessions display host state and never invoke the tenant updater. */

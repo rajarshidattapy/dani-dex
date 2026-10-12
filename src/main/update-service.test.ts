@@ -316,6 +316,61 @@ describe("UpdateService", () => {
     await vi.waitFor(() => expect(service.getStatus().phase).toBe("ready"));
   });
 
+  it.each(["darwin", "win32", "linux"] as const)(
+    "checks immediately when automatic updates are enabled from idle on %s",
+    async (platform) => {
+      const updater = new FakeUpdater();
+      makeUpdateAvailable(updater);
+      completeDownload(updater);
+      const service = createService(updater, { autoDownload: false, platform });
+      service.start(false);
+      service.setAutoDownload(true);
+      await vi.waitFor(() => expect(service.getStatus().phase).toBe("ready"));
+      expect(updater.checkForUpdates).toHaveBeenCalledOnce();
+      expect(updater.downloadUpdate).toHaveBeenCalledOnce();
+      service.stop();
+    },
+  );
+
+  it("rechecks a previously current release when automatic updates are enabled", async () => {
+    const updater = new FakeUpdater();
+    const service = createService(updater, { autoDownload: false });
+    service.start(false);
+    await service.checkForUpdates();
+    expect(service.getStatus().phase).toBe("up-to-date");
+    makeUpdateAvailable(updater);
+    completeDownload(updater);
+    service.setAutoDownload(true);
+    await vi.waitFor(() => expect(service.getStatus().phase).toBe("ready"));
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(2);
+    service.stop();
+  });
+
+  it("retries a failed check when automatic updates are enabled", async () => {
+    const updater = new FakeUpdater();
+    updater.checkForUpdates.mockRejectedValueOnce(new Error("offline"));
+    const service = createService(updater, { autoDownload: false });
+    service.start(false);
+    await service.checkForUpdates();
+    expect(service.getStatus().phase).toBe("error");
+    makeUpdateAvailable(updater);
+    completeDownload(updater);
+    service.setAutoDownload(true);
+    await vi.waitFor(() => expect(service.getStatus().phase).toBe("ready"));
+    service.stop();
+  });
+
+  it("does not start tenant checks when automatic updates are enabled on a managed host", () => {
+    const updater = new FakeUpdater();
+    const service = createService(updater, { autoDownload: false });
+    service.start(false);
+    service.setManagedByHost(true);
+    service.setAutoDownload(true);
+    expect(updater.checkForUpdates).not.toHaveBeenCalled();
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+    service.stop();
+  });
+
   it("does not start a download when the preference is switched off", async () => {
     const updater = new FakeUpdater();
     makeUpdateAvailable(updater);
