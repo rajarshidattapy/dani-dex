@@ -2,8 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { DaniDexDatabase } from "./dani-dex-database";
 import { AgentRoutineStore } from "./agent-routine-store";
+import { DaniDexDatabase } from "./dani-dex-database";
 import { GatewayStore } from "./gateway-store";
 import { RoutineWatchStore } from "./routine-watch-store";
 
@@ -61,8 +61,9 @@ it("matches only new reviewed source events and reconciles actual routine outcom
     const matched = watches.match(w, "new");
     expect(matched.agentId).toBe("chief");
     expect(watches.match(w, "new").eventKey).toBe(matched.eventKey);
-    expect(() => watches.attachRun(w, "wrong-run")).toThrow("Owned active");
-    const run = routines.createRun(routine, routine.trigger.id, "manual", new Date().toISOString());
+    expect(() => watches.attachRun(w, "wrong-run")).toThrow("Exact committed");
+    const run = routines.createEventRun(routine, matched.eventKey);
+    routines.attachDelivery(run.id, "durable-delivery");
     watches.attachRun(w, run.id);
     expect(() => watches.match(w, "new")).toThrow("resolved");
     expect(db.connection.prepare("SELECT state FROM projection_routine_watches WHERE watch_id=?").get(w)?.state).toBe(
@@ -136,6 +137,82 @@ it("cancel, timeout, wrong owner and source revoke stay terminal with no run att
     gateway.revoke("g", "owner");
     expect(() => watches.match(c, "new")).toThrow("authorized");
     expect(routines.listRuns("chief", routine.id, 10)).toHaveLength(0);
+  } finally {
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("recovers lost watch acknowledgement after committed delivery and revoke without reopening work", async () => {
+  const root = await mkdtemp(join(tmpdir(), "watch-ack-"));
+  let db = new DaniDexDatabase(root);
+  await db.initialize();
+  try {
+    let routines = new AgentRoutineStore(db);
+    const gateway = new GatewayStore(db);
+    const watches = new RoutineWatchStore(db);
+    const routine = routines.create({
+      agentId: "chief",
+      name: "Follow-up",
+      instruction: "Owner instruction",
+      active: true,
+      timezone: "UTC",
+      schedule: { kind: "daily", time: "09:00" },
+    });
+    gateway.register({
+      gatewayId: "g",
+      ownerId: "owner",
+      agentId: "chief",
+      platform: "telegram",
+      accountId: "bot",
+      credentialHandle: "vault:test",
+    });
+    gateway.pair("g", "owner", "chat", "sender");
+    gateway.enable("g", "owner");
+    const w = watches.create({
+      ownerId: "owner",
+      agentId: "chief",
+      routineId: routine.id,
+      gatewayId: "g",
+      conversationId: "chat",
+      senderId: "sender",
+      deadline: Date.now() + 60000,
+    });
+    gateway.ingest("g", {
+      eventId: "new",
+      conversationId: "chat",
+      senderId: "sender",
+      body: "Untrusted",
+      nextOffset: 1,
+    });
+    gateway.approveInbound("g", "owner", "new", "Untrusted", "chat", "sender");
+    const event = watches.match(w, "new");
+    const run = routines.createEventRun(routine, event.eventKey);
+    watches.recoverCommittedRuns();
+    expect(db.connection.prepare("SELECT state FROM projection_routine_watches WHERE watch_id=?").get(w)?.state).toBe(
+      "matched",
+    );
+    expect(() => watches.attachRun(w, run.id)).toThrow("Exact committed");
+    routines.attachDelivery(run.id, "committed-delivery");
+    gateway.revoke("g", "owner");
+    db.close();
+    db = new DaniDexDatabase(root);
+    await db.initialize();
+    routines = new AgentRoutineStore(db);
+    const recovered = new RoutineWatchStore(db);
+    await recovered.processDue(new Date(Date.now() + 120000));
+    expect(() => recovered.cancel(w, "owner")).toThrow("unavailable");
+    expect(
+      db.connection.prepare("SELECT state,run_id FROM projection_routine_watches WHERE watch_id=?").get(w),
+    ).toMatchObject({ state: "running", run_id: run.id });
+    expect(() => recovered.match(w, "new")).toThrow("resolved");
+    expect(routines.createEventRun(routine, event.eventKey).deliveryId).toBe("committed-delivery");
+    routines.updateRunStatus(run.id, "succeeded");
+    recovered.reconcileRuns();
+    expect(db.connection.prepare("SELECT state FROM projection_routine_watches WHERE watch_id=?").get(w)?.state).toBe(
+      "completed",
+    );
+    expect(routines.listRuns("chief", routine.id, 10)).toHaveLength(1);
   } finally {
     db.close();
     await rm(root, { recursive: true, force: true });

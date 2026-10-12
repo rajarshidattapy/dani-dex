@@ -97,7 +97,8 @@ export class RoutineWatchStore implements RoutineDueSource {
     });
     const row = this.database.connection
       .prepare("SELECT agent_id,routine_id FROM projection_routine_watches WHERE watch_id=?")
-      .get(watchId)!;
+      .get(watchId);
+    if (!row) throw Error("Watch unavailable.");
     return {
       agentId: String(row.agent_id),
       routineId: String(row.routine_id),
@@ -106,23 +107,59 @@ export class RoutineWatchStore implements RoutineDueSource {
         .digest("hex"),
     };
   }
+  /** Status-only recovery. A committed run never authorizes another enqueue. */
+  recoverCommittedRuns(): void {
+    const rows = this.database.connection
+      .prepare("SELECT watch_id,agent_id,routine_id,event_id FROM projection_routine_watches WHERE state='matched'")
+      .all();
+    for (const row of rows) {
+      const eventKey = createHash("sha256")
+        .update(JSON.stringify([row.watch_id, row.event_id]))
+        .digest("hex");
+      const commandId = `routine-run:event:${row.agent_id}:${row.routine_id}:${eventKey}`;
+      const receipt = this.database.connection
+        .prepare("SELECT result_json FROM orchestration_command_receipts WHERE command_id=?")
+        .get(commandId);
+      if (!receipt) continue;
+      let runId: string;
+      try {
+        const r = JSON.parse(String(receipt.result_json));
+        if (typeof r?.id !== "string") continue;
+        runId = r.id;
+      } catch {
+        continue;
+      }
+      const run = this.database.connection
+        .prepare(
+          "SELECT status,delivery_id FROM projection_routine_runs WHERE run_id=? AND agent_id=? AND routine_id=?",
+        )
+        .get(runId, row.agent_id, row.routine_id);
+      if (!run || (!run.delivery_id && run.status === "queued")) continue;
+      this.change(String(row.watch_id), "committed-run-recovered", (db) =>
+        db
+          .prepare("UPDATE projection_routine_watches SET state=?,run_id=? WHERE watch_id=? AND state='matched'")
+          .run(
+            run.status === "succeeded"
+              ? "completed"
+              : ["failed", "cancelled", "interrupted"].includes(String(run.status))
+                ? "blocked"
+                : "running",
+            runId,
+            String(row.watch_id),
+          ),
+      );
+    }
+  }
   attachRun(watchId: string, runId: string): void {
-    this.change(watchId, "run-attached", (db) => {
-      this.assertMatched(watchId);
-      if (
-        !db
-          .prepare(
-            "SELECT 1 FROM projection_routine_runs r JOIN projection_routine_watches w ON r.routine_id=w.routine_id AND r.agent_id=w.agent_id WHERE w.watch_id=? AND r.run_id=? AND r.status IN ('queued','running','needs-attention')",
-          )
-          .get(watchId, runId)
-      )
-        throw Error("Owned active routine run required.");
-      db.prepare(
-        "UPDATE projection_routine_watches SET state='running',run_id=? WHERE watch_id=? AND state='matched'",
-      ).run(runId, watchId);
-    });
+    this.recoverCommittedRuns();
+    const attached = this.database.connection
+      .prepare("SELECT run_id FROM projection_routine_watches WHERE watch_id=?")
+      .get(watchId);
+    if (attached?.run_id === runId) return;
+    throw Error("Exact committed watch run required.");
   }
   cancel(watchId: string, ownerId: string): void {
+    this.recoverCommittedRuns();
     this.change(watchId, "cancelled", (db) => {
       const r = db
         .prepare(
@@ -133,6 +170,7 @@ export class RoutineWatchStore implements RoutineDueSource {
     });
   }
   reconcileRuns(): void {
+    this.recoverCommittedRuns();
     const rows = this.database.connection
       .prepare(
         "SELECT w.watch_id,r.status FROM projection_routine_watches w JOIN projection_routine_runs r ON r.run_id=w.run_id WHERE w.state='running' AND r.status IN ('succeeded','failed','cancelled','interrupted')",
@@ -152,7 +190,9 @@ export class RoutineWatchStore implements RoutineDueSource {
     return r?.d ? new Date(Number(r.d)).toISOString() : null;
   }
   async processDue(now: Date): Promise<void> {
-    if (!this.nextDueAt() || Date.parse(this.nextDueAt()!) > now.getTime()) return;
+    this.recoverCommittedRuns();
+    const due = this.nextDueAt();
+    if (!due || Date.parse(due) > now.getTime()) return;
     this.change("deadlines", "timed-out", (db) =>
       db
         .prepare(

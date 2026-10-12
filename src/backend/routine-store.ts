@@ -531,6 +531,10 @@ export class RoutineStore {
     return routine;
   }
 
+  protected currentRunRow(runId: string): OwnedRoutineRun {
+    return this.#requireRun(runId);
+  }
+
   #requireRun(runId: string): OwnedRoutineRun {
     const row = this.database.connection
       .prepare(`SELECT ${this.runColumns} FROM ${this.tables.runTable} WHERE run_id = ?`)
