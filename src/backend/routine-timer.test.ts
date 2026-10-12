@@ -140,3 +140,35 @@ it("asks each owner once for a wake a fire arms again", async () => {
   expect(behind.asked).toBe(1);
   timer.dispose();
 });
+
+it.each(["stopped", "disposed"])("does not continue an in-flight pass after the timer is %s", async (reason) => {
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let running = true;
+  const slow = source("2026-08-25T10:01:00.000Z", async () => {
+    await gate;
+  });
+  const behind = source("2026-08-25T10:01:00.000Z");
+  const timer = new RoutineTimer(
+    () => [slow.record, behind.record],
+    () => running,
+    () => undefined,
+  );
+  timer.arm();
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(slow.asked).toBe(1);
+  if (reason === "stopped") running = false;
+  else timer.dispose();
+  release();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(behind.asked).toBe(0);
+  expect(vi.getTimerCount()).toBe(0);
+  // Explicit reactivation may arm a new pass, not resurrect the disposed one.
+  running = true;
+  timer.arm();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(behind.asked).toBe(1);
+  timer.dispose();
+});

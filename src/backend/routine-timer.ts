@@ -18,6 +18,7 @@ const MAX_DELAY = 2_147_000_000;
 export class RoutineTimer {
   #timer: NodeJS.Timeout | null = null;
   #firing = false;
+  #generation = 0;
 
   constructor(
     private readonly sources: () => Iterable<RoutineDueSource>,
@@ -43,12 +44,13 @@ export class RoutineTimer {
     const delay = Math.max(0, Math.min(new Date(earliest).getTime() - Date.now(), MAX_DELAY));
     this.#timer = setTimeout(() => {
       this.#timer = null;
-      void this.#fire();
+      void this.#fire(this.#generation);
     }, delay);
     this.#timer.unref?.();
   }
 
   dispose(): void {
+    this.#generation += 1;
     if (this.#timer) clearTimeout(this.#timer);
     this.#timer = null;
   }
@@ -57,11 +59,13 @@ export class RoutineTimer {
    * Every source is asked, and one that throws must not stop the others or stop the re-arm: a
    * failure to fire an agent routine would otherwise leave the process asleep for good.
    */
-  async #fire(): Promise<void> {
+  async #fire(generation: number): Promise<void> {
+    if (generation !== this.#generation || !this.isRunning()) return;
     const now = new Date();
     this.#firing = true;
     try {
       for (const source of this.sources()) {
+        if (generation !== this.#generation || !this.isRunning()) break;
         try {
           await source.processDue(now);
         } catch (error) {
@@ -70,7 +74,7 @@ export class RoutineTimer {
       }
     } finally {
       this.#firing = false;
-      this.arm();
+      if (generation === this.#generation) this.arm();
     }
   }
 }
