@@ -392,11 +392,14 @@ export class RoutineStore {
     triggerId: string | null,
     kind: OwnedRoutineRun["kind"],
     scheduledFor: string,
+    eventKey?: string,
   ): OwnedRoutineRun {
     const { commandPrefix, eventPrefix, runAggregate, runTable, ownerColumn, handleColumn } = this.tables;
-    const commandId = triggerId
-      ? `${commandPrefix}-run:scheduled:${triggerId}:${scheduledFor}`
-      : `${commandPrefix}-run:manual:${routine.id}:${randomUUID()}`;
+    const commandId = eventKey
+      ? `${commandPrefix}-run:event:${routine.ownerId}:${routine.id}:${eventKey}`
+      : triggerId
+        ? `${commandPrefix}-run:scheduled:${triggerId}:${scheduledFor}`
+        : `${commandPrefix}-run:manual:${routine.id}:${randomUUID()}`;
     const runId = randomUUID();
     const createdAt = new Date().toISOString();
     return this.database.dispatch(

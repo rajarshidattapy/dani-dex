@@ -430,3 +430,27 @@ async function channelSetup(
   for (const channelId of channelIds) insert.run(channelId, JSON.stringify({ id: channelId }));
   return { database, routines: new ChannelRoutineStore(database) };
 }
+
+it("event runs reuse durable command receipts after restart and do not absorb external event instructions", async () => {
+  const { database, routines } = await setup();
+  const routine = routines.create({
+    agentId: "chief",
+    name: "Reply follow-up",
+    instruction: "Check the reviewed task status.",
+    active: true,
+    timezone: "UTC",
+    schedule: { kind: "daily", time: "09:00" },
+  });
+  const event = "a".repeat(64);
+  const first = routines.createEventRun(routine, event);
+  expect(routines.createEventRun(routine, event).id).toBe(first.id);
+  expect(first.instruction).toBe(routine.instruction);
+  const root = database.userDataPath;
+  database.close();
+  const reopened = new DaniDexDatabase(root);
+  await reopened.initialize();
+  const again = new AgentRoutineStore(reopened);
+  expect(again.createEventRun(routine, event).id).toBe(first.id);
+  expect(() => again.createEventRun(routine, "external instruction")).toThrow("Hashed");
+  reopened.close();
+});

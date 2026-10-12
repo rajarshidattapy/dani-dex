@@ -261,6 +261,26 @@ export class RoutineScheduler implements RoutineDueSource {
     return this.#routines.listRuns(input.agentId, input.routineId, 1)[0] ?? run;
   }
 
+  /** Internal preparation port only; no event listener or model/public tool calls it. */
+  async receiveWatchEvent(
+    agentId: string,
+    routineId: string,
+    eventKey: string,
+    validateSource: () => void,
+  ): Promise<RoutineRun> {
+    if (!this.mayDrain(agentId)) throw Error("Agent operation in progress.");
+    this.#conversation.requireKnownAgent(agentId);
+    validateSource();
+    const routine = this.#routines.get(agentId, routineId);
+    if (!routine?.active) throw Error("Routine inactive or removed.");
+    const run = this.#routines.createEventRun(routine, eventKey);
+    if (!run.deliveryId && run.status === "queued") {
+      validateSource();
+      await this.#enqueueRun(run, validateSource);
+    }
+    this.stateChanged(agentId);
+    return this.#routines.listRuns(agentId, routineId, 50).find((r) => r.id === run.id) ?? run;
+  }
   listRuns(input: ListRoutineRunsInput): RoutineRun[] {
     this.#conversation.requireKnownAgent(input.agentId);
     if (!this.#routines.get(input.agentId, input.routineId)) throw new Error("This routine no longer exists.");
@@ -470,11 +490,12 @@ export class RoutineScheduler implements RoutineDueSource {
     }
   }
 
-  async #enqueueRun(run: RoutineRun): Promise<void> {
+  async #enqueueRun(run: RoutineRun, validateSource?: () => void): Promise<void> {
     recordRestartActivity();
     const validateRecipient = this.#mailbox.prepareDelivery([run.agentId]);
     const agent = await this.#store.getOrCreate(run.agentId);
     try {
+      validateSource?.();
       validateRecipient();
       const receipt = await this.#mailbox.enqueue({
         sender: {
@@ -487,6 +508,7 @@ export class RoutineScheduler implements RoutineDueSource {
         recipientAgentIds: [agent.id],
         text: run.instruction,
         draftIds: [],
+        validateCommit: validateSource,
         replyToMessageId: null,
         idempotencyKey: run.triggerId ? `routine:${run.triggerId}:${run.scheduledFor}` : `routine:manual:${run.id}`,
       });
