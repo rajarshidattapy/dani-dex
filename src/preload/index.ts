@@ -119,6 +119,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { clipboardFiles } from "./clipboard-files";
 import { decodeFilePreview } from "./file-preview";
 import { decodeProviderRuntimeSnapshot } from "./provider-runtime";
+import { decodeLocalRcGateway } from "./rc-gateway";
 
 const attachmentImportListeners = new Set<(event: AttachmentImportEvent) => void>();
 let selectedServerId: string = LOCAL_SERVER_ID;
@@ -1332,15 +1333,15 @@ const danidexApi: DaniDexDesktopApi = {
     },
   },
   host: {
-    telegramReject:(eventId)=>ipcRenderer.invoke(IPC_CHANNELS.hostTelegramReject,eventId),
+    telegramReject: (eventId) => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramReject, eventId),
     telegramStatus: () => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramStatus),
-    telegramConfigure: (token) => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramConfigure,token),
-    telegramPair: (input) => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramPair,input),
+    telegramConfigure: (token) => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramConfigure, token),
+    telegramPair: (input) => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramPair, input),
     telegramEnable: () => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramEnable),
     telegramRevoke: () => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramRevoke),
-    telegramApproveReply:(input)=>ipcRenderer.invoke(IPC_CHANNELS.hostTelegramApproveReply,input),
+    telegramApproveReply: (input) => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramApproveReply, input),
     telegramApproveMedia: (input) => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramApproveMedia, input),
-    telegramApprove: (input) => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramApprove,input),
+    telegramApprove: (input) => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramApprove, input),
     getRcGateway: () => ipcRenderer.invoke(IPC_CHANNELS.hostGetRcGateway).then(decodeLocalRcGateway),
     setRcGateway: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.hostSetRcGateway, enabled).then(decodeLocalRcGateway),
     peerInbox: () => ipcRenderer.invoke(IPC_CHANNELS.hostPeerInbox),
@@ -1420,9 +1421,4 @@ function decodeChatGptConnection(value: unknown): import("@dani-dex/contracts/ip
   )
     throw new Error("Invalid ChatGPT registration.");
   return { clientId: value.clientId, email: value.email, planEnabled: value.planEnabled, expiresAt: value.expiresAt };
-}
-
-function decodeLocalRcGateway(value: unknown): import("@dani-dex/contracts/ipc").RcGatewayStatus {
-  if (!isDynamicRecord(value) || typeof value.enabled !== "boolean" || !isOneOf(value.phase, ["off", "connecting", "online", "reconnecting", "error"] as const) || ![value.origin, value.previousOrigin, value.changedAt, value.message].every((field) => field === null || typeof field === "string")) throw Error("Invalid RC gateway status.");
-  return { enabled: value.enabled, phase: value.phase, origin: value.origin as string | null, previousOrigin: value.previousOrigin as string | null, changedAt: value.changedAt as string | null, message: value.message as string | null };
 }

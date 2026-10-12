@@ -1,8 +1,9 @@
 import { expect, it, vi } from "vitest";
 import { TelegramTransport, TelegramTransportError } from "./telegram-transport";
+
 const token = "123:TEST_FAKE_TOKEN";
 it("posts bounded polling offset and returns validated updates", async () => {
-  const request = vi.fn(
+  const request = vi.fn<typeof fetch>(
     async () =>
       new Response(
         JSON.stringify({
@@ -40,12 +41,13 @@ it("exposes rate backoff without provider description", async () => {
     await transport.updates(0);
   } catch (error) {
     expect(error).toBeInstanceOf(TelegramTransportError);
-    expect((error as TelegramTransportError).retryAfterSeconds).toBe(15);
+    if (!(error instanceof TelegramTransportError)) throw error;
+    expect(error.retryAfterSeconds).toBe(15);
     expect(String(error)).not.toContain(token);
   }
 });
 it("refuses missing credentials, oversized replies and invalid recipient before network", async () => {
-  const request = vi.fn();
+  const request = vi.fn<typeof fetch>();
   await expect(new TelegramTransport(() => null, request).updates(0)).rejects.toThrow();
   await expect(new TelegramTransport(() => token, request).send("wrong", "hi")).rejects.toThrow();
   await expect(new TelegramTransport(() => token, request).send("12", "a".repeat(4097))).rejects.toThrow();
@@ -67,7 +69,7 @@ it("verifies the provider bot identity without returning the credential", async 
 
 it("downloads bounded file bytes with account pinning and no returned credential/path", async () => {
   let current = token;
-  const request = vi.fn(async (url: URL | RequestInfo) => {
+  const request = vi.fn<typeof fetch>(async (url: URL | RequestInfo) => {
     if (String(url).endsWith("getFile")) {
       current = "999:ROTATED";
       return new Response(
@@ -90,13 +92,15 @@ it("rejects unsafe provider paths and oversized metadata before download", async
     "documents/file?token=bad",
     "documents/./file",
   ]) {
-    const request = vi.fn(async () => new Response(JSON.stringify({ ok: true, result: { file_id: "f1", file_path } })));
+    const request = vi.fn<typeof fetch>(
+      async () => new Response(JSON.stringify({ ok: true, result: { file_id: "f1", file_path } })),
+    );
     await expect(new TelegramTransport(() => token, request).downloadFile("f1")).rejects.toThrow(
       "Telegram request failed.",
     );
     expect(request).toHaveBeenCalledTimes(1);
   }
-  const request = vi.fn(
+  const request = vi.fn<typeof fetch>(
     async () =>
       new Response(
         JSON.stringify({
@@ -110,7 +114,7 @@ it("rejects unsafe provider paths and oversized metadata before download", async
 });
 it("rejects wrong file identity, size mismatches and oversized streaming body", async () => {
   for (const kind of ["identity", "size", "stream", "length"]) {
-    const request = vi.fn(async (url: URL | RequestInfo) =>
+    const request = vi.fn<typeof fetch>(async (url: URL | RequestInfo) =>
       String(url).endsWith("getFile")
         ? new Response(
             JSON.stringify({
@@ -141,7 +145,7 @@ it("rejects wrong file identity, size mismatches and oversized streaming body", 
   }
 });
 it("redacts file errors and validates file ID before any network call", async () => {
-  const request = vi.fn(async () => {
+  const request = vi.fn<typeof fetch>(async () => {
     throw Error(`https://api.telegram.org/file/bot${token}/private`);
   });
   const transport = new TelegramTransport(() => token, request);

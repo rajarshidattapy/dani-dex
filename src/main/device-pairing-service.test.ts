@@ -1,9 +1,9 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { INPUT_LIMITS } from "@dani-dex/contracts/input-limits";
 import { afterEach, expect, it, vi } from "vitest";
 import { DevicePairingService } from "./device-pairing-service";
-import { INPUT_LIMITS } from "@dani-dex/contracts/input-limits";
 import { TeamStore } from "./team-store";
 
 const roots: string[] = [];
@@ -85,20 +85,25 @@ it("refuses a new device at the session cap instead of silently revoking another
 });
 
 it("redeems a short host code once and rejects links from the same invitation afterward", async () => {
- const f=await fixture();const invitation=f.pairing.createLink("https://host.example");
- expect(invitation.code).toMatch(/^[0-9]{8}$/u);expect(invitation.appUrl).toBe("https://host.example/device-pairing");
- expect((await f.pairing.redeemCode(invitation.code,"Browser phone")).sessionToken).toBeTruthy();
- await expect(f.pairing.redeemCode(invitation.code,"Browser phone")).rejects.toThrow("invalid or expired");
- await expect(f.redeem(new URL(invitation.url))).rejects.toThrow("invalid or expired");
+  const f = await fixture();
+  const invitation = f.pairing.createLink("https://host.example");
+  expect(invitation.code).toMatch(/^[0-9]{8}$/u);
+  expect(invitation.appUrl).toBe("https://host.example/device-pairing");
+  expect((await f.pairing.redeemCode(invitation.code, "Browser phone")).sessionToken).toBeTruthy();
+  await expect(f.pairing.redeemCode(invitation.code, "Browser phone")).rejects.toThrow("invalid or expired");
+  await expect(f.redeem(new URL(invitation.url))).rejects.toThrow("invalid or expired");
 });
 it("limits guessing globally and expires or replaces the host code", async () => {
- const f=await fixture();const old=f.pairing.createLink("https://host.example");const next=f.pairing.createLink("https://host.example");
- await expect(f.pairing.redeemCode(old.code,"phone")).rejects.toThrow();
- const wrong=next.code==="00000000"?"11111111":"00000000";
- for(let i=0;i<9;i++)await expect(f.pairing.redeemCode(wrong,"phone")).rejects.toThrow();
- await expect(f.pairing.redeemCode(next.code,"phone")).rejects.toThrow();
- const expired=f.pairing.createLink("https://host.example");f.advance(900001);
- await expect(f.pairing.redeemCode(expired.code,"phone")).rejects.toThrow();
+  const f = await fixture();
+  const old = f.pairing.createLink("https://host.example");
+  const next = f.pairing.createLink("https://host.example");
+  await expect(f.pairing.redeemCode(old.code, "phone")).rejects.toThrow();
+  const wrong = next.code === "00000000" ? "11111111" : "00000000";
+  for (let i = 0; i < 9; i++) await expect(f.pairing.redeemCode(wrong, "phone")).rejects.toThrow();
+  await expect(f.pairing.redeemCode(next.code, "phone")).rejects.toThrow();
+  const expired = f.pairing.createLink("https://host.example");
+  f.advance(900001);
+  await expect(f.pairing.redeemCode(expired.code, "phone")).rejects.toThrow();
 });
 
 it("allows next-day setup and creates a full 30-day session", async () => {
@@ -108,7 +113,9 @@ it("allows next-day setup and creates a full 30-day session", async () => {
   expect(invitation.expiresAt - issuedAt).toBeGreaterThan(23 * 60 * 60 * 1000);
   f.advance(23 * 60 * 60 * 1000);
   vi.spyOn(Date, "now").mockReturnValue(invitation.expiresAt - 13 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000);
-  const paired = await f.pairing.redeemCode(invitation.code, "Personal phone");
-  expect(Date.parse(f.store.listSessions().find((s) => s.username === "Personal phone")!.expiresAt) - invitation.expiresAt).toBe(16 * 24 * 60 * 60 * 1000 + 23 * 60 * 60 * 1000);
+  await f.pairing.redeemCode(invitation.code, "Personal phone");
+  const session = f.store.listSessions().find((s) => s.username === "Personal phone");
+  if (!session) throw Error("Expected paired session");
+  expect(Date.parse(session.expiresAt) - invitation.expiresAt).toBe(16 * 24 * 60 * 60 * 1000 + 23 * 60 * 60 * 1000);
   await expect(f.pairing.redeemCode(invitation.code, "Other phone")).rejects.toThrow();
 });

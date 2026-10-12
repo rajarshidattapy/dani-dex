@@ -1,9 +1,33 @@
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { AgentSummary, ConversationSnapshot } from "@dani-dex/contracts/ipc";
 import { expect, it, vi } from "vitest";
 import { DaniDexDatabase } from "../backend/dani-dex-database";
 import { TelegramController } from "./telegram-controller";
+
+function testAgent(id: string): AgentSummary {
+  return {
+    id,
+    name: "Chief",
+    title: "Chief",
+    description: "Test",
+    notifications: true,
+    provider: "opencode",
+    model: "dani/dani-free-auto",
+    reasoningEffort: "medium",
+    threadId: null,
+    workspacePath: "/tmp/test",
+    preview: "",
+    updatedAt: null,
+    avatarSeed: "chief",
+    avatarHue: null,
+    avatarUrl: null,
+  };
+}
+function emptyConversation(): ConversationSnapshot {
+  return { agentId: "chief-of-staff", threadId: null, activeTurnId: null, revision: 0, messages: [] };
+}
 it("stores encrypted credentials and preserves disabled setup across restart", async () => {
   const root = await mkdtemp(join(tmpdir(), "telegram-controller-"));
   const db = new DaniDexDatabase(root);
@@ -16,9 +40,9 @@ it("stores encrypted credentials and preserves disabled setup across restart", a
     async () => new Response(JSON.stringify({ ok: true, result: { id: 123, is_bot: true, username: "test_bot" } })),
   );
   const agents = {
-    listAgents: vi.fn(() => [{ id: "chief-of-staff" }]),
+    listAgents: vi.fn(() => [testAgent("chief-of-staff")]),
     deliverReviewedGatewayMessage: vi.fn(),
-    readConversation: vi.fn(async () => ({ messages: [] })),
+    readConversation: vi.fn(async () => emptyConversation()),
   };
   const path = join(root, "secret.json");
   const controller = new TelegramController({ database: db, agents, credentialPath: path, cipher, request });
@@ -47,9 +71,9 @@ it("a locked vault refuses saving and does not register an enabled gateway", asy
   const controller = new TelegramController({
     database: db,
     agents: {
-      listAgents: vi.fn(() => [{ id: "chief-of-staff" }]),
+      listAgents: vi.fn(() => [testAgent("chief-of-staff")]),
       deliverReviewedGatewayMessage: vi.fn(),
-      readConversation: vi.fn(async () => ({ messages: [] })),
+      readConversation: vi.fn(async () => emptyConversation()),
     },
     credentialPath: join(root, "secret"),
     cipher: {
@@ -86,21 +110,32 @@ it("collects only the completed Chief turn for the original request and reviews 
       ),
   );
   const agents = {
-    listAgents: vi.fn(() => [{ id: "chief-of-staff" }]),
+    listAgents: vi.fn(() => [testAgent("chief-of-staff")]),
     deliverReviewedGatewayMessage: vi.fn(),
-    readConversation: vi.fn(async () => ({
-      messages: [
-        {
-          id: "reply",
-          author: "assistant",
-          turnId: "turn1",
-          status: "completed",
-          itemType: "final_answer",
-          text: "Chief result",
-        },
-        { id: "other", author: "assistant", turnId: "turn2", status: "completed", text: "Other private reply" },
-      ],
-    })),
+    readConversation: vi.fn(
+      async (): Promise<ConversationSnapshot> => ({
+        ...emptyConversation(),
+        messages: [
+          {
+            id: "reply",
+            createdAt: new Date().toISOString(),
+            author: "assistant",
+            turnId: "turn1",
+            status: "completed",
+            itemType: "final_answer",
+            text: "Chief result",
+          },
+          {
+            id: "other",
+            createdAt: new Date().toISOString(),
+            author: "assistant",
+            turnId: "turn2",
+            status: "completed",
+            text: "Other private reply",
+          },
+        ],
+      }),
+    ),
   };
   const controller = new TelegramController({
     database: db,
@@ -146,8 +181,8 @@ it("wires paired media metadata into owner status and refuses text-only approval
   await db.initialize();
   const cipher = { encrypt: (s: string) => Buffer.from(s), decrypt: (b: Buffer) => b.toString() };
   const agents = {
-    listAgents: vi.fn(() => [{ id: "chief" }]),
-    readConversation: vi.fn(async () => ({ messages: [] })),
+    listAgents: vi.fn(() => [testAgent("chief")]),
+    readConversation: vi.fn(async () => emptyConversation()),
     deliverReviewedGatewayMessage: vi.fn(),
   };
   let polls = 0;
@@ -207,7 +242,11 @@ it("downloads only exact reviewed document and reconciles mailbox commit before 
   let polls = 0,
     first = true;
   const deliver = vi.fn(
-    async (input: { validateApproval: () => void; attachmentData?: Array<{ bytes: Uint8Array; name: string }> }) => {
+    async (input: {
+      idempotencyKey: string;
+      validateApproval: () => void;
+      attachmentData?: Array<{ bytes: Uint8Array; name: string }>;
+    }) => {
       input.validateApproval();
       expect(input.attachmentData?.[0].name).toBe("brief.txt");
       expect(new TextDecoder().decode(input.attachmentData?.[0].bytes)).toBe("abc");
@@ -247,8 +286,8 @@ it("downloads only exact reviewed document and reconciles mailbox commit before 
   const c = new TelegramController({
     database: db,
     agents: {
-      listAgents: vi.fn(() => [{ id: "chief" }]),
-      readConversation: vi.fn(async () => ({ messages: [] })),
+      listAgents: vi.fn(() => [testAgent("chief")]),
+      readConversation: vi.fn(async () => emptyConversation()),
       deliverReviewedGatewayMessage: deliver,
     },
     credentialPath: join(root, "secret"),
@@ -267,9 +306,7 @@ it("downloads only exact reviewed document and reconciles mailbox commit before 
     await c.approveMedia("4", m.reviewDigest);
     expect(deliver).toHaveBeenCalledTimes(2);
     expect(deliver.mock.calls[0][0]).toMatchObject({ idempotencyKey: expect.any(String) });
-    expect((deliver.mock.calls[0][0] as { idempotencyKey: string }).idempotencyKey).toBe(
-      (deliver.mock.calls[1][0] as { idempotencyKey: string }).idempotencyKey,
-    );
+    expect(deliver.mock.calls[0][0].idempotencyKey).toBe(deliver.mock.calls[1][0].idempotencyKey);
     expect(c.status().pending).toEqual([]);
     expect(c.status().mediaPending).toEqual([]);
   } finally {
@@ -287,7 +324,11 @@ it("revoking media during pinned download prevents mailbox delivery", async () =
   let polls = 0,
     first = true;
   const deliver = vi.fn(
-    async (input: { validateApproval: () => void; attachmentData?: Array<{ bytes: Uint8Array; name: string }> }) => {
+    async (input: {
+      idempotencyKey: string;
+      validateApproval: () => void;
+      attachmentData?: Array<{ bytes: Uint8Array; name: string }>;
+    }) => {
       input.validateApproval();
       expect(input.attachmentData?.[0].name).toBe("brief.txt");
       expect(new TextDecoder().decode(input.attachmentData?.[0].bytes)).toBe("abc");
@@ -330,8 +371,8 @@ it("revoking media during pinned download prevents mailbox delivery", async () =
   const c = new TelegramController({
     database: db,
     agents: {
-      listAgents: vi.fn(() => [{ id: "chief" }]),
-      readConversation: vi.fn(async () => ({ messages: [] })),
+      listAgents: vi.fn(() => [testAgent("chief")]),
+      readConversation: vi.fn(async () => emptyConversation()),
       deliverReviewedGatewayMessage: deliver,
     },
     credentialPath: join(root, "secret"),
