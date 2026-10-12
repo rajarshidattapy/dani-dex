@@ -8870,3 +8870,29 @@ body:has(.browser-panel-expanded) .app-frame {
   font-size: var(--dani-dex-text-sm);
   opacity: 0.85;
 }
+
+.agent-built-in-skill-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+}
+.agent-built-in-skill-detail .agent-memory-state {
+  flex: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  min-height: 0;
+}
+
+.agent-skills-modal {
+  max-width: calc(100vw - 24px);
+}
+.agent-built-in-skill-detail {
+  min-width: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.agent-built-in-skill-detail .agent-memory-state {
+  display: block;
+}

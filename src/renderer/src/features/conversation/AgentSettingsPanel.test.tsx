@@ -178,6 +178,48 @@ describe("AgentSettingsPanel", () => {
     }
   });
 
+  it("shows built-in purpose and owner controls without requesting a marketplace record", async () => {
+    mock = createMockDaniDex();
+    window.danidex = mock.api;
+    const builtIn = {
+      skillId: "dani-dex-data",
+      slug: "dani-dex-data",
+      name: "Shared records",
+      description: "Keep structured records.",
+      origin: "managed" as const,
+      enabled: true,
+      state: "installed" as const,
+      installedVersion: 1,
+      availableVersion: 1,
+    };
+    mock.api.skills.listInstalled = vi.fn().mockResolvedValue([builtIn]);
+    mock.api.skills.setEnabled = vi.fn().mockResolvedValue({ ...builtIn, enabled: false });
+    mock.api.skills.get = vi.fn();
+    const count = vi.fn();
+    render(() => (
+      <AgentSkillsModal
+        open
+        agentId="chief"
+        agentName="Chief"
+        selectionRequest={{ skillId: builtIn.skillId }}
+        onOpenChange={vi.fn()}
+        onCountChange={count}
+      />
+    ));
+    expect(await screen.findByText("Built-in guide · dani-dex-data")).toBeInTheDocument();
+    expect(screen.getByText("Keep structured records.")).toBeInTheDocument();
+    expect(mock.api.skills.get).not.toHaveBeenCalled();
+    expect(count).toHaveBeenCalledWith(0);
+    const toggle = screen.getByRole("switch", { name: "Enable Shared records" });
+    await fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(window.danidex.skills.setEnabled).toHaveBeenCalledWith({
+        agentId: "chief",
+        skillId: "dani-dex-data",
+        enabled: false,
+      }),
+    );
+  });
   it("opens a requested skill in the existing management modal", async () => {
     mock = createMockDaniDex();
     window.danidex = mock.api;

@@ -176,3 +176,10 @@ describe("PromptBuilder", () => {
     expect(result).toContain("Pending: publish_site.");
   });
 });
+
+it("does not force ordinary turns into shared storage or silently grant cross-agent writes", () => {
+  const prompt = new PromptBuilder(agent, "/tmp/shared", [], null, null, null).render();
+  expect(prompt).not.toContain("You may read and write all of them");
+  expect(prompt).not.toContain("Do this quietly");
+  expect(prompt).toContain("Do not turn an ordinary question or requested file into database work");
+});

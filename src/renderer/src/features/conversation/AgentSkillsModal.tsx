@@ -64,7 +64,7 @@ export function AgentSkillsModal(props: AgentSkillsModalProps) {
   let confirmationTrigger: HTMLButtonElement | undefined;
   const skillsMode = () => props.skillsMode ?? "mutable";
   const mutable = () => skillsMode() === "mutable";
-  const assignmentCount = createMemo(() => skills().length);
+  const assignmentCount = createMemo(() => skills().filter((s) => !isBuiltInSkill(s)).length);
   const atCap = createMemo(() => assignmentCount() >= INPUT_LIMITS.agentSkills);
   const canAdd = createMemo(() => mutable() && !atCap() && props.onAddFromMarketplace !== undefined && !loading());
   const selectedSkill = createMemo(() => {
@@ -91,7 +91,7 @@ export function AgentSkillsModal(props: AgentSkillsModalProps) {
       );
       if (request !== listRequest || agentId !== props.agentId || !props.open) return;
       setSkills(next);
-      props.onCountChange(next.length);
+      props.onCountChange(next.filter((s) => !isBuiltInSkill(s)).length);
       const targetId = props.selectionRequest?.skillId;
       if (showLoading && targetId) {
         const target = next.find((skill) => skill.skillId === targetId);
@@ -156,7 +156,7 @@ export function AgentSkillsModal(props: AgentSkillsModalProps) {
     setDetail(null);
     setDetailLoading(true);
     setError(null);
-    if (!mutable() && skill.skillId.startsWith("local-skill-")) {
+    if (isBuiltInSkill(skill) || (!mutable() && skill.skillId.startsWith("local-skill-"))) {
       setDetailLoading(false);
       return;
     }
@@ -326,17 +326,19 @@ export function AgentSkillsModal(props: AgentSkillsModalProps) {
                 <Show when={selectedSkill()}>
                   {(skill) => (
                     <Show when={mutable()}>
-                      <SkillMoreMenu
-                        skill={skill()}
-                        disabled={savingId() === skill().skillId}
-                        onUpdate={() =>
-                          skill().state === "modified" ? requestReplace(skill()) : void install(skill(), false)
-                        }
-                        onRepair={() =>
-                          skill().state === "modified" ? requestReplace(skill()) : void install(skill(), false)
-                        }
-                        onUninstall={() => requestRemove(skill())}
-                      />
+                      <Show when={!isBuiltInSkill(skill())}>
+                        <SkillMoreMenu
+                          skill={skill()}
+                          disabled={savingId() === skill().skillId}
+                          onUpdate={() =>
+                            skill().state === "modified" ? requestReplace(skill()) : void install(skill(), false)
+                          }
+                          onRepair={() =>
+                            skill().state === "modified" ? requestReplace(skill()) : void install(skill(), false)
+                          }
+                          onUninstall={() => requestRemove(skill())}
+                        />
+                      </Show>
                       <Switch
                         aria-label={`Enable ${skill().name}`}
                         checked={isEnabled(skill())}
@@ -472,7 +474,9 @@ export function AgentSkillsModal(props: AgentSkillsModalProps) {
                                                 <strong>{skill().name}</strong>
                                               </div>
                                               <small>
-                                                {catalog()[skill().skillId]?.description ?? skillMeta(skill())}
+                                                {skill().description ??
+                                                  catalog()[skill().skillId]?.description ??
+                                                  skillMeta(skill())}
                                               </small>
                                             </div>
                                           </Button>
@@ -489,24 +493,26 @@ export function AgentSkillsModal(props: AgentSkillsModalProps) {
                                                 Update
                                               </Button>
                                             </Show>
-                                            <SkillMoreMenu
-                                              skill={skill()}
-                                              disabled={savingId() === skill().skillId}
-                                              onUpdate={() =>
-                                                skill().state === "modified"
-                                                  ? requestReplace(skill())
-                                                  : void install(skill(), false)
-                                              }
-                                              onRepair={() =>
-                                                skill().state === "modified"
-                                                  ? requestReplace(skill())
-                                                  : void install(skill(), false)
-                                              }
-                                              onUninstall={() => requestRemove(skill())}
-                                              triggerRef={(element) => {
-                                                confirmationTrigger = element;
-                                              }}
-                                            />
+                                            <Show when={!isBuiltInSkill(skill())}>
+                                              <SkillMoreMenu
+                                                skill={skill()}
+                                                disabled={savingId() === skill().skillId}
+                                                onUpdate={() =>
+                                                  skill().state === "modified"
+                                                    ? requestReplace(skill())
+                                                    : void install(skill(), false)
+                                                }
+                                                onRepair={() =>
+                                                  skill().state === "modified"
+                                                    ? requestReplace(skill())
+                                                    : void install(skill(), false)
+                                                }
+                                                onUninstall={() => requestRemove(skill())}
+                                                triggerRef={(element) => {
+                                                  confirmationTrigger = element;
+                                                }}
+                                              />
+                                            </Show>
                                             <Switch
                                               aria-label={`Enable ${skill().name}`}
                                               checked={isEnabled(skill())}
@@ -532,6 +538,18 @@ export function AgentSkillsModal(props: AgentSkillsModalProps) {
                                     <p class="agent-memory-state" role="status">
                                       This local skill is stored on the host. Open its details on that computer.
                                     </p>
+                                  </Show>
+                                  <Show when={isBuiltInSkill(skill())}>
+                                    <div class="agent-built-in-skill-detail">
+                                      <p class="agent-memory-state">Built-in guide · {skill().slug}</p>
+                                      <p>{skill().description ?? "Product workflow guide."}</p>
+                                      <p class="agent-memory-state">
+                                        {isEnabled(skill())
+                                          ? "Enabled for this agent."
+                                          : "Disabled for this agent, including after restart."}{" "}
+                                        A suggested guide is not proof it was read or used.
+                                      </p>
+                                    </div>
                                   </Show>
                                   <Show when={detailLoading()}>
                                     <p class="agent-memory-state">Loading details…</p>
@@ -680,10 +698,7 @@ function isEnabled(skill: InstalledSkill): boolean {
 }
 
 export function userAssignedSkills(skills: InstalledSkill[]): InstalledSkill[] {
-  return skills
-    .filter((skill) => !isBuiltInSkill(skill))
-    .slice()
-    .sort((left, right) => left.name.localeCompare(right.name));
+  return skills.slice().sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function skillMeta(skill: InstalledSkill): string {

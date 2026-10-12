@@ -22,7 +22,7 @@ import { isBoolean, isDynamicRecord, isNumber, isOneOf, isString } from "@dani-d
 import { parse as parseYaml } from "yaml";
 import type { CentralAuthManager } from "./central-auth-manager";
 import type { LocalSkillLibrary } from "./local-skill-library";
-import { listManagedSkillsForChat } from "./managed-skill-service";
+import { listManagedSkillsForChat, setManagedSkillEnabled } from "./managed-skill-service";
 import { archiveDirectory, inspectArchive, normalizedFiles } from "./skill-package";
 
 const DRAFT_LIFETIME_MS = 30 * 60 * 1000;
@@ -151,13 +151,8 @@ export class SkillMarketplaceService {
         toInstalledSkill(entry, availableVersion, state, await installedSkillDescription(agent.workspacePath, entry)),
       );
     }
-    // Role packs may already be managed in this workspace. Show their shipped
-    // catalog identity without turning them into user-removable installations.
-    if (this.localLibrary) {
-      for (const skill of await listManagedSkillsForChat(agent)) {
-        const id = await this.localLibrary.bundledIdForSlug(skill.slug);
-        if (id && !installed.some((item) => item.skillId === id)) installed.push({ ...skill, skillId: id });
-      }
+    for (const skill of await listManagedSkillsForChat(agent)) {
+      if (!installed.some((item) => item.slug === skill.slug)) installed.push(skill);
     }
     return installed.sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -176,6 +171,24 @@ export class SkillMarketplaceService {
           await installedSkillDescription(agent.workspacePath, entry),
         ),
       );
+    }
+    for (const skill of installed) {
+      const roots =
+        skill.enabled === false
+          ? [disabledDirectory(agent.workspacePath, skill.slug)]
+          : targetDirectories(agent.workspacePath, skill.slug);
+      for (const root of roots) {
+        try {
+          const match = (await readFile(join(root, "SKILL.md"), "utf8")).match(
+            /^---\s*\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u,
+          );
+          const metadata = match ? parseYaml(match[1]) : null;
+          if (isDynamicRecord(metadata)) skill.disableModelInvocation = metadata["disable-model-invocation"] === true;
+          break;
+        } catch {
+          /* Missing metadata never contributes a trigger. */
+        }
+      }
     }
     return installed.sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -278,7 +291,11 @@ export class SkillMarketplaceService {
     const files = normalizedFiles(bundle);
     if (await this.localLibrary?.isBundled(detail.id)) {
       const managed = (await listManagedSkillsForChat(agent)).find((skill) => skill.slug === detail.slug);
-      if (managed) return { ...managed, skillId: detail.id };
+      if (managed) {
+        const result = managed.enabled === false ? await setManagedSkillEnabled(agent, managed.slug, true) : managed;
+        await this.refreshAgentRuntime(agent.id);
+        return result;
+      }
     }
     await assertSkillPaths(agent.workspacePath, detail.slug);
     const lock = await readLock(agent.workspacePath);
@@ -363,7 +380,11 @@ export class SkillMarketplaceService {
     const agent = this.requireAgent(input.agentId);
     const lock = await readLock(agent.workspacePath);
     const entry = lock.skills[input.skillId];
-    if (!entry) throw new Error("Skill not found.");
+    if (!entry) {
+      const result = await setManagedSkillEnabled(agent, input.skillId, input.enabled);
+      await this.refreshAgentRuntime(input.agentId);
+      return result;
+    }
     await assertSkillPaths(agent.workspacePath, entry.slug);
     const currentlyEnabled = entry.enabled !== false;
     if (currentlyEnabled === input.enabled) {

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { chmod, lstat, mkdir, readdir, readFile, realpath, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentSummary, InstalledSkill } from "@dani-dex/contracts/ipc";
@@ -76,6 +77,10 @@ export class ManagedSkillService {
 
 async function syncTargets(workspacePath: string, content: string, slug: string): Promise<SyncTargetsResult> {
   const workspaceRoot = await realpath(resolve(workspacePath));
+  if (await fileExists(join(workspaceRoot, ".dani-dex-disabled-skills", slug, "SKILL.md"))) {
+    await reconcileDisabledSkill(workspaceRoot, slug);
+    return { collisions: [], failures: [] };
+  }
   const targets = [
     join(workspacePath, ".agents", "skills", slug, "SKILL.md"),
     join(workspacePath, ".claude", "skills", slug, "SKILL.md"),
@@ -239,46 +244,52 @@ export async function listManagedSkillsForChat(
 ): Promise<InstalledSkill[]> {
   const root = await realpath(agent.workspacePath);
   const directory = join(root, agent.provider === "claude" ? ".claude" : ".agents", "skills");
+  const directories = [directory, join(root, ".dani-dex-disabled-skills")];
   const skills: InstalledSkill[] = [];
   try {
-    await verifySafeDirectory(root, directory);
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      try {
-        const folder = join(directory, entry.name);
-        await verifySafeDirectory(root, folder);
-        const marker = join(folder, OWNERSHIP_MARKER);
-        const file = join(folder, "SKILL.md");
-        await rejectSymlink(marker);
-        await rejectSymlink(file);
-        if (
-          (await optionalText(marker)) !== `${JSON.stringify({ managedBy: "danidex", slug: entry.name, version: 1 })}\n`
-        )
-          continue;
-        const content = await readFile(file, "utf8");
-        const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(content)?.[1];
-        if (!frontmatter) continue;
-        const metadata = parseYaml(frontmatter);
-        if (
-          !isDynamicRecord(metadata) ||
-          typeof metadata.name !== "string" ||
-          !metadata.name.trim() ||
-          typeof metadata.description !== "string"
-        )
-          continue;
-        skills.push({
-          skillId: entry.name,
-          slug: entry.name,
-          name: metadata.name,
-          description: metadata.description,
-          installedVersion: 1,
-          availableVersion: 1,
-          enabled: true,
-          state: "installed",
-          origin: "managed",
-        });
-      } catch {
-        /* Missing or invalid managed files are not selectable. */
+    for (const directory of directories) {
+      if (!(await fileExists(directory))) continue;
+      await verifySafeDirectory(root, directory);
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        try {
+          const folder = join(directory, entry.name);
+          await verifySafeDirectory(root, folder);
+          const marker = join(folder, OWNERSHIP_MARKER);
+          const file = join(folder, "SKILL.md");
+          await rejectSymlink(marker);
+          await rejectSymlink(file);
+          if (
+            (await optionalText(marker)) !==
+            `${JSON.stringify({ managedBy: "danidex", slug: entry.name, version: 1 })}\n`
+          )
+            continue;
+          const content = await readFile(file, "utf8");
+          const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(content)?.[1];
+          if (!frontmatter) continue;
+          const metadata = parseYaml(frontmatter);
+          if (
+            !isDynamicRecord(metadata) ||
+            typeof metadata.name !== "string" ||
+            !metadata.name.trim() ||
+            typeof metadata.description !== "string"
+          )
+            continue;
+          skills.push({
+            skillId: entry.name,
+            slug: entry.name,
+            name: managedSkillName(entry.name, metadata.name),
+            description: metadata.description,
+            installedVersion: 1,
+            availableVersion: 1,
+            enabled: directory === directories[0],
+            disableModelInvocation: metadata["disable-model-invocation"] === true,
+            state: "installed",
+            origin: "managed",
+          });
+        } catch {
+          /* Missing or invalid managed files are not selectable. */
+        }
       }
     }
   } catch {
@@ -308,6 +319,10 @@ export async function syncManagedSkillFiles(
   if (!skill) throw new Error(`The ${slug} skill has no SKILL.md.`);
   const extras = files.filter((file) => file !== skill);
   const workspaceRoot = await realpath(resolve(workspacePath));
+  if (await fileExists(join(workspaceRoot, ".dani-dex-disabled-skills", slug, "SKILL.md"))) {
+    await reconcileDisabledSkill(workspaceRoot, slug);
+    return { collisions: [], failures: [] };
+  }
   const collisions: string[] = [];
   const failures: SyncTargetsResult["failures"] = [];
   for (const folder of [".agents", ".claude"]) {
@@ -349,4 +364,111 @@ export async function seedWorkspaceFiles(workspacePath: string, files: readonly 
       if (!isFileExistsError(error)) throw error;
     }
   }
+}
+
+/** Explicit owner control. Preserve the whole owned bundle while providers cannot discover it. */
+export async function setManagedSkillEnabled(
+  agent: Pick<AgentSummary, "workspacePath" | "provider">,
+  slug: string,
+  enabled: boolean,
+): Promise<InstalledSkill> {
+  if (!/^[a-zA-Z0-9_-]+$/.test(slug)) throw new Error("Invalid built-in skill ID.");
+  const skill = (await listManagedSkillsForChat(agent)).find((s) => s.slug === slug);
+  if (!skill) throw new Error("Built-in skill not found.");
+  if (skill.enabled === enabled) {
+    if (!enabled) await reconcileDisabledSkill(await realpath(agent.workspacePath), slug);
+    return skill;
+  }
+  const root = await realpath(agent.workspacePath);
+  const stash = join(root, ".dani-dex-disabled-skills", slug);
+  const targets = [join(root, ".agents", "skills", slug), join(root, ".claude", "skills", slug)];
+  const marker = `${JSON.stringify({ managedBy: "danidex", slug, version: 1 })}\n`;
+  for (const path of enabled ? [stash] : targets) {
+    if (!(await fileExists(path))) continue;
+    await verifySafeDirectory(root, path);
+    await inspectOwnedTree(root, path);
+    await rejectSymlink(join(path, OWNERSHIP_MARKER));
+    if ((await optionalText(join(path, OWNERSHIP_MARKER))) !== marker)
+      throw new Error("Unowned skill copy cannot be changed.");
+  }
+  if (enabled) {
+    await reconcileDisabledSkill(root, slug);
+    for (const path of targets) if (await fileExists(path)) throw new Error("Skill folder is occupied.");
+    const { cp } = await import("node:fs/promises");
+    const restored: string[] = [];
+    try {
+      for (const target of targets) {
+        await ensureSafeDirectory(root, dirname(target));
+        restored.push(target);
+        await cp(stash, target, { recursive: true, errorOnExist: true, force: false });
+      }
+    } catch (error) {
+      const { rm } = await import("node:fs/promises");
+      for (const path of restored) await rm(path, { recursive: true });
+      throw error;
+    }
+    const { rm } = await import("node:fs/promises");
+    await rm(stash, { recursive: true });
+  } else {
+    const { cp, rm } = await import("node:fs/promises");
+    const source = join(root, agent.provider === "claude" ? ".claude" : ".agents", "skills", slug);
+    const sourceHash = await inspectOwnedTree(root, source);
+    for (const target of targets)
+      if ((await fileExists(target)) && (await inspectOwnedTree(root, target)) !== sourceHash)
+        throw new Error("Provider copies differ. Reconcile local changes before disabling.");
+    await ensureSafeDirectory(root, dirname(stash));
+    if (await fileExists(stash)) throw new Error("Disabled copy already exists.");
+    const temporary = `${stash}.${crypto.randomUUID()}.tmp`;
+    try {
+      await cp(source, temporary, { recursive: true, errorOnExist: true, force: false });
+      await rename(temporary, stash);
+    } finally {
+      await rm(temporary, { recursive: true, force: true });
+    }
+    for (const target of targets) if (await fileExists(target)) await rm(target, { recursive: true });
+  }
+  return { ...skill, enabled };
+}
+
+async function inspectOwnedTree(root: string, directory: string): Promise<string> {
+  await verifySafeDirectory(root, directory);
+  const hash = createHash("sha256");
+  for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  )) {
+    const path = join(directory, entry.name);
+    await rejectSymlink(path);
+    hash.update(entry.name);
+    if (entry.isDirectory()) hash.update(await inspectOwnedTree(root, path));
+    else if (entry.isFile()) hash.update(await readFile(path));
+    else throw new Error("Unsupported built-in skill file.");
+  }
+  return hash.digest("hex");
+}
+
+function managedSkillName(slug: string, fallback: string): string {
+  const names: Record<string, string> = {
+    "dani-dex-data": "Shared records",
+    "dani-dex-skill-creator": "Reusable workflow creator",
+    "dani-dex-site-hosting": "Public site hosting",
+  };
+  return names[slug] ?? fallback;
+}
+
+/** Resume an interrupted disable or restore before a provider starts. Never remove divergent copies. */
+async function reconcileDisabledSkill(root: string, slug: string): Promise<void> {
+  const stash = join(root, ".dani-dex-disabled-skills", slug);
+  const marker = `${JSON.stringify({ managedBy: "danidex", slug, version: 1 })}\n`;
+  await verifySafeDirectory(root, stash);
+  await rejectSymlink(join(stash, OWNERSHIP_MARKER));
+  if ((await optionalText(join(stash, OWNERSHIP_MARKER))) !== marker) throw new Error("Disabled skill is unowned.");
+  const hash = await inspectOwnedTree(root, stash);
+  const targets = [join(root, ".agents", "skills", slug), join(root, ".claude", "skills", slug)];
+  for (const path of targets)
+    if (await fileExists(path)) {
+      if ((await inspectOwnedTree(root, path)) !== hash)
+        throw new Error("Interrupted skill change has different copies. Reconcile before starting.");
+    }
+  const { rm } = await import("node:fs/promises");
+  for (const path of targets) if (await fileExists(path)) await rm(path, { recursive: true });
 }

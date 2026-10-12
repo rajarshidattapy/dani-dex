@@ -8,6 +8,7 @@ import type { AgentSummary } from "@dani-dex/contracts/ipc";
 import { zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CentralAuthManager } from "./central-auth-manager";
+import { ManagedSkillService } from "./managed-skill-service";
 import { SkillMarketplaceService } from "./skill-marketplace-service";
 
 const encoder = new TextEncoder();
@@ -98,6 +99,25 @@ describe("SkillMarketplaceService", () => {
         refreshedAgents.push(agentId);
       },
     );
+
+    await mkdir(agent.workspacePath, { recursive: true });
+    await new ManagedSkillService(
+      join(process.cwd(), "resources/managed-skills/dani-dex-data/SKILL.md"),
+      undefined,
+      undefined,
+      "dani-dex-data",
+    ).syncAgent(agent);
+    expect(await service.listInstalled(agent.id)).toContainEqual(
+      expect.objectContaining({ skillId: "dani-dex-data", name: "Shared records", origin: "managed" }),
+    );
+    await service.setEnabled({ agentId: agent.id, skillId: "dani-dex-data", enabled: false });
+    expect(await service.listInstalledForChatTags(agent.id)).toContainEqual(
+      expect.objectContaining({ skillId: "dani-dex-data", enabled: false }),
+    );
+    await service.setEnabled({ agentId: agent.id, skillId: "dani-dex-data", enabled: true });
+    for (const folder of [".agents", ".claude"])
+      await rm(join(agent.workspacePath, folder, "skills", "dani-dex-data"), { recursive: true });
+    refreshedAgents.length = 0;
 
     await expect(service.get("skill-1")).resolves.toMatchObject({
       examplePrompt: "Write notes for the latest commits.",

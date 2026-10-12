@@ -328,7 +328,8 @@ function markerLabel(marker: ChatActionMarkerModel): string {
       created: "Created skill",
       revised: "Revised skill",
       installed: "Installed skill",
-      selected: "Selected skill",
+      selected: "Selected skill (legacy candidate)",
+      suggested: "Suggested skill",
     }[marker.action];
   if (marker.kind === "agent-message") {
     if (marker.expectsReply) return marker.direction === "outgoing" ? "Messaged" : "Message from";

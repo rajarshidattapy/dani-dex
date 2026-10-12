@@ -113,6 +113,8 @@ export interface InstalledSkill {
   origin?: InstalledSkillOrigin;
   /** Missing on older hosts, Team GET payloads, and pre-description lock files. */
   description?: string;
+  /** Provider frontmatter opt-out: only an explicit named request can shortlist this skill. */
+  disableModelInvocation?: boolean;
 }
 
 export interface InstallSkillInput {

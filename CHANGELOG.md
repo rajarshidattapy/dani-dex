@@ -5,6 +5,20 @@ All notable changes to Dani-Dex will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-10-12
+
+### Fixed
+
+- Route built-in skill suggestions from explicit task intent, not catalogue word overlap. Respect
+  negated requests, disabled skills, and explicit-invocation-only provider metadata.
+- Show suggestions as candidates, not claims that a provider read or used a skill. Mark old selection
+  records as legacy candidates instead of rewriting conversation history.
+- Show built-in guides with their purpose and persistent enable/disable controls. Preserve owned bundles
+  and binary assets, recover interrupted changes, and refuse divergent or unowned provider copies.
+- Stop forcing ordinary questions and requested documents into quiet shared-database work.
+- Keep built-in skill details readable at narrow widths without contacting the marketplace.
+
+
 ## [0.18.1] - 2026-10-12
 
 ### Fixed

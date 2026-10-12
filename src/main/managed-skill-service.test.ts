@@ -1,9 +1,9 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSummary } from "@dani-dex/contracts/ipc";
 import { afterEach, describe, expect, it } from "vitest";
-import { listManagedSkillsForChat, ManagedSkillService } from "./managed-skill-service";
+import { listManagedSkillsForChat, ManagedSkillService, setManagedSkillEnabled } from "./managed-skill-service";
 
 const roots: string[] = [];
 
@@ -162,3 +162,95 @@ function agent(workspacePath: string): AgentSummary {
     avatarUrl: null,
   };
 }
+
+describe("owner controls for built-in skills", () => {
+  it("disables both providers, persists across sync, and restores assets", async () => {
+    const root = await mkdtemp(join(tmpdir(), "dani-managed-controls-"));
+    try {
+      const workspace = join(root, "agent");
+      await mkdir(workspace);
+      const profile = agent(workspace);
+      const source = join(process.cwd(), "resources/managed-skills/dani-dex-skill-creator/SKILL.md");
+      const sync = new ManagedSkillService(source, undefined, undefined, "dani-dex-skill-creator");
+      await sync.syncAgent(profile);
+      expect(await setManagedSkillEnabled(profile, "dani-dex-skill-creator", false)).toMatchObject({ enabled: false });
+      await sync.syncAgent(profile);
+      expect(await listManagedSkillsForChat(profile)).toEqual([expect.objectContaining({ enabled: false })]);
+      await expect(readFile(join(workspace, ".agents/skills/dani-dex-skill-creator/SKILL.md"))).rejects.toThrow();
+      await expect(readFile(join(workspace, ".claude/skills/dani-dex-skill-creator/SKILL.md"))).rejects.toThrow();
+      await setManagedSkillEnabled(profile, "dani-dex-skill-creator", true);
+      expect(await listManagedSkillsForChat(profile)).toEqual([expect.objectContaining({ enabled: true })]);
+      expect(await readFile(join(workspace, ".claude/skills/dani-dex-skill-creator/SKILL.md"), "utf8")).toContain(
+        "Create a local skill",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it("preserves different provider copies rather than deleting local edits", async () => {
+    const root = await mkdtemp(join(tmpdir(), "dani-managed-conflict-"));
+    try {
+      const workspace = join(root, "agent");
+      await mkdir(workspace);
+      const profile = agent(workspace);
+      await new ManagedSkillService(
+        join(process.cwd(), "resources/managed-skills/dani-dex-site-hosting/SKILL.md"),
+      ).syncAgent(profile);
+      const path = join(workspace, ".claude/skills/dani-dex-site-hosting/SKILL.md");
+      await writeFile(path, (await readFile(path, "utf8")) + "\nlocal edit");
+      await expect(setManagedSkillEnabled(profile, "dani-dex-site-hosting", false)).rejects.toThrow("copies differ");
+      expect(await readFile(path, "utf8")).toContain("local edit");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+it("reconciles a crash after saving the disabled bundle without losing binary assets", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dani-managed-crash-"));
+  try {
+    const workspace = join(root, "agent");
+    await mkdir(workspace);
+    const profile = agent(workspace);
+    const slug = "dani-dex-skill-creator";
+    const sync = new ManagedSkillService(
+      join(process.cwd(), `resources/managed-skills/${slug}/SKILL.md`),
+      undefined,
+      undefined,
+      slug,
+    );
+    await sync.syncAgent(profile);
+    const asset = new Uint8Array([0, 255, 130, 64]);
+    for (const folder of [".agents", ".claude"])
+      await writeFile(join(workspace, folder, "skills", slug, "binary.png"), asset);
+    await mkdir(join(workspace, ".dani-dex-disabled-skills"));
+    await cp(join(workspace, ".agents", "skills", slug), join(workspace, ".dani-dex-disabled-skills", slug), {
+      recursive: true,
+    });
+    await sync.syncAgent(profile);
+    await expect(readFile(join(workspace, ".agents", "skills", slug, "SKILL.md"))).rejects.toThrow();
+    await setManagedSkillEnabled(profile, slug, true);
+    expect(new Uint8Array(await readFile(join(workspace, ".claude", "skills", slug, "binary.png")))).toEqual(asset);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("honors provider explicit invocation flags in managed metadata", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dani-managed-metadata-"));
+  try {
+    const workspace = join(root, "agent");
+    await mkdir(workspace);
+    const source = join(root, "SKILL.md");
+    await writeFile(
+      source,
+      "---\nname: explicit-only\ndescription: workflow\ndisable-model-invocation: true\n---\nGuide",
+    );
+    await new ManagedSkillService(source, undefined, undefined, "explicit-only").syncAgent(agent(workspace));
+    expect(await listManagedSkillsForChat(agent(workspace))).toEqual([
+      expect.objectContaining({ disableModelInvocation: true }),
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
