@@ -56,7 +56,22 @@ export class TelegramGateway {
   }
   private accept(update: TelegramUpdate): void {
     const m = update.message ?? update.edited_message;
-    const unsupported = Boolean(update.edited_message || m?.voice || m?.document);
+    const unsupported = Boolean(
+      update.edited_message ||
+        m?.voice ||
+        m?.document ||
+        m?.photo ||
+        m?.video ||
+        m?.audio ||
+        m?.animation ||
+        m?.sticker ||
+        m?.video_note ||
+        m?.contact ||
+        m?.location ||
+        m?.venue ||
+        m?.poll ||
+        !m?.text,
+    );
     const media = this.media;
     const manifest = media ? telegramMediaManifest(update) : null;
     // Unsupported updates are explicitly represented, not silently presented as a complete media adapter.

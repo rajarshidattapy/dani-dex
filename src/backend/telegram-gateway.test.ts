@@ -247,6 +247,9 @@ it.each([false, true])("rejects unhandled media and edits atomically with media 
         result: [
           { update_id: 4, message: { ...message, document: { file_id: "missing-unique-id" } } },
           { update_id: 5, edited_message: { ...message, text: "edited text" } },
+          { update_id: 6, message: { ...message, photo: [{ file_id: "photo" }], caption: "Read this image" } },
+          { update_id: 7, message: { ...message, video: { file_id: "video" }, caption: "Watch this" } },
+          { update_id: 8, message: { ...message, caption: "Caption without supported content" } },
         ],
       }),
     );
@@ -261,8 +264,8 @@ it.each([false, true])("rejects unhandled media and edits atomically with media 
     await gateway.poll();
     expect(store.pending("g")).toEqual([]);
     expect(store.approved("g")).toEqual([]);
-    expect(store.offset("g")).toBe(6);
-    for (const eventId of ["4", "5"]) {
+    expect(store.offset("g")).toBe(9);
+    for (const eventId of ["4", "5", "6", "7", "8"]) {
       const row = db.connection
         .prepare("SELECT state,body FROM projection_gateway_inbox WHERE event_id=?")
         .get(eventId);

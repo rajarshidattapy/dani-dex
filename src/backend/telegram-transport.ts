@@ -9,6 +9,16 @@ const telegramMessage = z.object({
   caption: z.string().optional(),
   voice: z.unknown().optional(),
   document: z.unknown().optional(),
+  photo: z.unknown().optional(),
+  video: z.unknown().optional(),
+  audio: z.unknown().optional(),
+  animation: z.unknown().optional(),
+  sticker: z.unknown().optional(),
+  video_note: z.unknown().optional(),
+  contact: z.unknown().optional(),
+  location: z.unknown().optional(),
+  venue: z.unknown().optional(),
+  poll: z.unknown().optional(),
 });
 export const telegramUpdate = z.object({
   update_id: z.number().int().nonnegative(),
@@ -51,7 +61,7 @@ export class TelegramTransport {
   }
   /** Internal owner-reviewed media primitive. No provider path or credential escapes this boundary. */
   async downloadFile(fileId: string, signal?: AbortSignal): Promise<Uint8Array> {
-    if (!fileId || fileId.length > 512 || /[\x00-\x20]/.test(fileId))
+    if (!fileId || fileId.length > 512 || [...fileId].some((character) => character.charCodeAt(0) <= 32))
       throw new Error("Invalid Telegram file identifier.");
     try {
       // Pin credential for metadata + bytes, so rotation cannot mix accounts across the await.
