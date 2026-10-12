@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
@@ -161,6 +162,12 @@ interface InternalTab {
   viewInvalidations: Set<() => void>;
   // Pending consent permits human takeover; submission blocks captures until document replacement.
   secret?: { origin: string; submitted: boolean; replaced: boolean; running: boolean };
+}
+
+/** Native guest contents are supplied by Electron's window-open callback at runtime.
+ * Its generated BrowserWindowConstructorOptions declaration omits this extension. */
+interface BrowserPopupOptions extends BrowserWindowConstructorOptions {
+  webContents?: WebContents;
 }
 
 export interface PreparedBrowserSecret {
@@ -1172,7 +1179,7 @@ export class BrowserHost {
     ownerThreadId: string | null,
     ownerAgentId: string | null,
     environment: BrowserEnvironment = defaultBrowserEnvironment(),
-    popupOptions?: BrowserWindowConstructorOptions,
+    popupOptions?: BrowserPopupOptions,
   ): InternalTab {
     if (this.#destroyPromise) throw new Error("BrowserHost is shutting down.");
     const view = this.#createView(popupOptions);
@@ -1198,7 +1205,7 @@ export class BrowserHost {
     };
   }
 
-  #createView(popupOptions?: BrowserWindowConstructorOptions): WebContentsView {
+  #createView(popupOptions?: BrowserPopupOptions): WebContentsView {
     const view = new WebContentsView({
       ...(popupOptions?.webContents ? { webContents: popupOptions.webContents } : {}),
       webPreferences: {
@@ -1272,7 +1279,8 @@ export class BrowserHost {
   #bindTabEvents(tab: InternalTab): void {
     const contents = tab.contents;
     const changed = () => this.#emitChanged();
-    contents.on("close", () => {
+    const lifecycle: EventEmitter = contents;
+    lifecycle.on("close", () => {
       tab.closing = true;
     });
     contents.once("destroyed", () => {
@@ -1464,7 +1472,7 @@ export class BrowserHost {
         overrideBrowserWindowOptions: {
           webPreferences: { ...BROWSER_WEB_PREFERENCES, session: this.#session },
         },
-        createWindow: (options) => {
+        createWindow: (options: BrowserPopupOptions) => {
           if (popup) return popup.contents;
           popup = this.#createTab(
             randomUUID(),

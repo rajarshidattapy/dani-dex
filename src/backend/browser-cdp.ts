@@ -1,3 +1,4 @@
+import type { EventEmitter } from "node:events";
 import { stat } from "node:fs/promises";
 import { INPUT_LIMITS } from "@dani-dex/contracts/input-limits";
 import type {
@@ -268,7 +269,9 @@ export class BrowserCdpEngine {
 
   constructor(contents: WebContents) {
     this.#contents = contents;
-    contents.once("close", () => {
+    // Electron emits the native close lifecycle event before destruction; its generated typings omit it.
+    const lifecycle: EventEmitter = contents;
+    lifecycle.once("close", () => {
       // Native teardown can start before isDestroyed() becomes true. Detaching a debugger
       // during that interval can crash Electron; Chromium will dispose it with the page.
       this.#closing = true;
