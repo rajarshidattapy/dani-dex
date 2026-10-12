@@ -140,3 +140,141 @@ it("collects only the completed Chief turn for the original request and reviews 
     await rm(root, { recursive: true, force: true });
   }
 });
+it("wires paired media metadata into owner status and refuses text-only approval", async () => {
+  const root = await mkdtemp(join(tmpdir(), "tg-controller-media-"));
+  const db = new DaniDexDatabase(root);
+  await db.initialize();
+  const cipher = { encrypt: (s: string) => Buffer.from(s), decrypt: (b: Buffer) => b.toString() };
+  const agents = {
+    listAgents: vi.fn(() => [{ id: "chief" }]),
+    readConversation: vi.fn(async () => ({ messages: [] })),
+    deliverReviewedGatewayMessage: vi.fn(),
+  };
+  let polls = 0;
+  const request = vi.fn(async (input: URL | RequestInfo) =>
+    Response.json(
+      String(input).endsWith("getMe")
+        ? { ok: true, result: { id: 123, is_bot: true, username: "qa" } }
+        : {
+            ok: true,
+            result: polls++
+              ? []
+              : [
+                  {
+                    update_id: 4,
+                    message: {
+                      message_id: 1,
+                      chat: { id: 12 },
+                      from: { id: 7 },
+                      document: { file_id: "f", file_unique_id: "u", file_name: "brief.pdf" },
+                    },
+                  },
+                ],
+          },
+    ),
+  );
+  const controller = new TelegramController({
+    database: db,
+    agents,
+    credentialPath: join(root, "secret"),
+    cipher,
+    request,
+  });
+  try {
+    await controller.configure("123:FAKE");
+    controller.pair("12", "7");
+    controller.enable();
+    await vi.waitFor(() => expect(controller.status().mediaPending).toHaveLength(1));
+    const item = controller.status().pending[0];
+    expect(controller.status().mediaPending[0]).toMatchObject({ messageId: "1", safeName: "brief.pdf", senderId: "7" });
+    await expect(
+      controller.approveInbound(item.eventId, item.body, item.conversationId, item.senderId),
+    ).rejects.toThrow("exact attachment review");
+    expect(agents.deliverReviewedGatewayMessage).not.toHaveBeenCalled();
+    controller.revoke();
+    expect(controller.status().mediaPending).toEqual([]);
+  } finally {
+    controller.stop();
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+it("downloads only exact reviewed document and reconciles mailbox commit before gateway ack", async () => {
+  const root = await mkdtemp(join(tmpdir(), "tg-document-delivery-"));
+  const db = new DaniDexDatabase(root);
+  await db.initialize();
+  const cipher = { encrypt: (s: string) => Buffer.from(s), decrypt: (b: Buffer) => b.toString() };
+  let polls = 0,
+    first = true;
+  const deliver = vi.fn(
+    async (input: { validateApproval: () => void; attachmentData?: Array<{ bytes: Uint8Array; name: string }> }) => {
+      input.validateApproval();
+      expect(input.attachmentData?.[0].name).toBe("brief.txt");
+      expect(new TextDecoder().decode(input.attachmentData?.[0].bytes)).toBe("abc");
+      if (first) {
+        first = false;
+        throw Error("commit ack lost");
+      }
+      return { messageId: "durable-receipt", deliveries: [] };
+    },
+  );
+  const request = vi.fn(async (input: URL | RequestInfo) => {
+    const u = String(input);
+    if (u.includes("/file/")) return new Response("abc");
+    return Response.json(
+      u.endsWith("getMe")
+        ? { ok: true, result: { id: 123, is_bot: true, username: "qa" } }
+        : u.endsWith("getFile")
+          ? { ok: true, result: { file_id: "f", file_unique_id: "u", file_size: 3, file_path: "documents/brief.txt" } }
+          : {
+              ok: true,
+              result: polls++
+                ? []
+                : [
+                    {
+                      update_id: 4,
+                      message: {
+                        message_id: 1,
+                        chat: { id: 12 },
+                        from: { id: 7 },
+                        document: { file_id: "f", file_unique_id: "u", file_size: 3, file_name: "brief.txt" },
+                      },
+                    },
+                  ],
+            },
+    );
+  });
+  const c = new TelegramController({
+    database: db,
+    agents: {
+      listAgents: vi.fn(() => [{ id: "chief" }]),
+      readConversation: vi.fn(async () => ({ messages: [] })),
+      deliverReviewedGatewayMessage: deliver,
+    },
+    credentialPath: join(root, "secret"),
+    cipher,
+    request,
+  });
+  try {
+    await c.configure("123:FAKE");
+    c.pair("12", "7");
+    c.enable();
+    await vi.waitFor(() => expect(c.status().mediaPending).toHaveLength(1));
+    const m = c.status().mediaPending[0];
+    await expect(c.approveMedia("4", "wrong")).rejects.toThrow();
+    expect(deliver).not.toHaveBeenCalled();
+    await expect(c.approveMedia("4", m.reviewDigest)).rejects.toThrow("commit ack lost");
+    await c.approveMedia("4", m.reviewDigest);
+    expect(deliver).toHaveBeenCalledTimes(2);
+    expect(deliver.mock.calls[0][0]).toMatchObject({ idempotencyKey: expect.any(String) });
+    expect((deliver.mock.calls[0][0] as { idempotencyKey: string }).idempotencyKey).toBe(
+      (deliver.mock.calls[1][0] as { idempotencyKey: string }).idempotencyKey,
+    );
+    expect(c.status().pending).toEqual([]);
+    expect(c.status().mediaPending).toEqual([]);
+  } finally {
+    c.stop();
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

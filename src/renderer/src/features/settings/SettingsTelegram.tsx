@@ -145,15 +145,25 @@ export function SettingsTelegram() {
               <ItemDescription role="alert">{state.error || state.status?.error}</ItemDescription>
             </Show>
             <ItemDescription>
-              Text-only first slice. Voice, files and edits are not wired yet. Chief replies need your review before sending. No live provider test
-              completed.
+              Text-only first slice. Voice, files and edits are not wired yet. Chief replies need your review before
+              sending. No live provider test completed.
             </ItemDescription>
           </ItemContent>
         </Item>
       </ItemGroup>
-      <For each={state.status?.uncertainReplies??[]}>{reply=>(
-        <Item><ItemContent><ItemTitle>Reply delivery unconfirmed: chat {reply.conversationId}</ItemTitle><ItemDescription>The connection ended before Telegram confirmed this send. Check this chat before sending again. Dani-Dex will not retry automatically.</ItemDescription></ItemContent></Item>
-      )}</For>
+      <For each={state.status?.uncertainReplies ?? []}>
+        {(reply) => (
+          <Item>
+            <ItemContent>
+              <ItemTitle>Reply delivery unconfirmed: chat {reply.conversationId}</ItemTitle>
+              <ItemDescription>
+                The connection ended before Telegram confirmed this send. Check this chat before sending again. Dani-Dex
+                will not retry automatically.
+              </ItemDescription>
+            </ItemContent>
+          </Item>
+        )}
+      </For>
       <For each={state.status?.pending ?? []}>
         {(item) => (
           <Item>
@@ -163,7 +173,7 @@ export function SettingsTelegram() {
               </ItemTitle>
               <Text>{item.body}</Text>
               <Button
-                disabled={state.busy}
+                disabled={state.busy || Boolean(state.status?.mediaPending?.some((m) => m.updateId === item.eventId))}
                 onClick={() =>
                   void action(() =>
                     window.danidex.host.telegramApprove({
@@ -177,12 +187,77 @@ export function SettingsTelegram() {
               >
                 Approve this request for Chief
               </Button>
-              <Button disabled={state.busy} onClick={()=>void action(()=>window.danidex.host.telegramReject(item.eventId))}>Reject request</Button>
+              <Button
+                disabled={state.busy}
+                onClick={() => void action(() => window.danidex.host.telegramReject(item.eventId))}
+              >
+                Reject request
+              </Button>
             </ItemContent>
           </Item>
         )}
       </For>
-      <For each={state.status?.replies??[]}>{reply=><Item><ItemContent><ItemTitle>Review Chief reply to chat {reply.conversationId}</ItemTitle><Text>{reply.body}</Text><Button disabled={state.busy} onClick={()=>void action(()=>window.danidex.host.telegramApproveReply({replyId:reply.replyId,body:reply.body,conversationId:reply.conversationId,senderId:reply.senderId}))}>Approve and send this reply</Button></ItemContent></Item>}</For>
+      <For each={state.status?.mediaPending ?? []}>
+        {(media) => (
+          <Item>
+            <ItemContent>
+              <ItemTitle>
+                {media.safeName} from {media.senderId}, chat {media.conversationId}
+              </ItemTitle>
+              <Text>
+                {media.kind}. {media.size === null ? "Size not supplied" : `${media.size} bytes`}. Message{" "}
+                {media.messageId}. {media.edited ? "Edited message: separate review unavailable." : "Original message."}
+              </Text>
+              <Text>{media.caption || "No caption."}</Text>
+              <Text>
+                Untrusted sender content. Approving sends this exact document to Chief, not permission for external
+                effects.
+              </Text>
+              <Button
+                disabled={state.busy || media.edited || media.kind !== "document"}
+                onClick={() =>
+                  void action(() =>
+                    window.danidex.host.telegramApproveMedia({
+                      eventId: media.updateId,
+                      reviewDigest: media.reviewDigest,
+                    }),
+                  )
+                }
+              >
+                Send reviewed document to Chief
+              </Button>
+              <Show when={media.kind === "voice"}>
+                <Text>Voice transcription is not available yet.</Text>
+              </Show>
+            </ItemContent>
+          </Item>
+        )}
+      </For>
+      <For each={state.status?.replies ?? []}>
+        {(reply) => (
+          <Item>
+            <ItemContent>
+              <ItemTitle>Review Chief reply to chat {reply.conversationId}</ItemTitle>
+              <Text>{reply.body}</Text>
+              <Button
+                disabled={state.busy}
+                onClick={() =>
+                  void action(() =>
+                    window.danidex.host.telegramApproveReply({
+                      replyId: reply.replyId,
+                      body: reply.body,
+                      conversationId: reply.conversationId,
+                      senderId: reply.senderId,
+                    }),
+                  )
+                }
+              >
+                Approve and send this reply
+              </Button>
+            </ItemContent>
+          </Item>
+        )}
+      </For>
     </SettingsSection>
   );
 }

@@ -2,9 +2,16 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
-import type { AgentSummary, ConversationSnapshot, QueuedMessageReceipt } from "@dani-dex/contracts/ipc";
+import type {
+  AgentSummary,
+  AttachmentDataInput,
+  ConversationSnapshot,
+  QueuedMessageReceipt,
+} from "@dani-dex/contracts/ipc";
 import type { DaniDexDatabase } from "../backend/dani-dex-database";
 import { GatewayStore } from "../backend/gateway-store";
+import { assertSupportedAttachmentName, attachmentMimeTypeForName } from "@dani-dex/contracts/attachment-files";
+import { TelegramMediaStore } from "../backend/telegram-media-store";
 import { TelegramGateway } from "../backend/telegram-gateway";
 import { TelegramTransport, TelegramTransportError } from "../backend/telegram-transport";
 import { DEFAULT_CHIEF_ID } from "./chief-of-staff-bootstrap";
@@ -13,6 +20,7 @@ const credentials = z.object({ version: z.literal(1), ciphertext: z.string(), ac
 /** Desktop-local only. Never exposed through the public Team API. */
 export class TelegramController {
   private readonly store: GatewayStore;
+  private readonly media: TelegramMediaStore;
   private gateway: TelegramGateway | null = null;
   private token: string | null = null;
   private gatewayId: string | null = null;
@@ -21,16 +29,31 @@ export class TelegramController {
   private error: string | null = null;
   private stopped = false;
   private chiefId = DEFAULT_CHIEF_ID;
+  private readonly mediaDispatch = new Set<string>();
   constructor(
     private readonly options: {
       database: DaniDexDatabase;
-      agents: Pick<AgentService, "deliverReviewedGatewayMessage" | "readConversation" | "listAgents">;
+      agents: {
+        listAgents(): AgentSummary[];
+        readConversation(agentId: string): Promise<ConversationSnapshot>;
+        deliverReviewedGatewayMessage(input: {
+          agentId: string;
+          idempotencyKey: string;
+          text: string;
+          gatewayId: string;
+          conversationId: string;
+          senderId: string;
+          validateApproval: () => void;
+          attachmentData?: AttachmentDataInput[];
+        }): Promise<QueuedMessageReceipt>;
+      };
       credentialPath: string;
       cipher: SecretCipher;
       request?: typeof fetch;
     },
   ) {
     this.store = new GatewayStore(options.database);
+    this.media = new TelegramMediaStore(options.database);
   }
   async initialize(): Promise<void> {
     this.store.recoverInterruptedSends();
@@ -88,6 +111,7 @@ export class TelegramController {
       enabled: this.gatewayId ? this.store.enabled(this.gatewayId) : false,
       error: this.error,
       pending: this.gatewayId ? this.store.pending(this.gatewayId) : [],
+      mediaPending: this.gatewayId ? this.media.pending(this.gatewayId) : [],
       replies: this.gatewayId ? this.store.reviewReplies(this.gatewayId) : [],
       uncertainReplies: this.gatewayId ? this.store.uncertainReplies(this.gatewayId) : [],
     };
@@ -97,9 +121,52 @@ export class TelegramController {
   }
   async approveInbound(eventId: string, body: string, conversationId: string, senderId: string): Promise<void> {
     const id = this.requireGateway();
+    if (this.media.has(id, eventId))
+      throw new Error("Media needs exact attachment review. Text approval cannot deliver it.");
     this.store.approveInbound(id, "local-owner", eventId, body, conversationId, senderId);
     if (!this.gateway) throw new Error("Telegram transport unavailable.");
     await this.gateway.dispatchApproved();
+  }
+  async approveMedia(eventId: string, digest: string): Promise<void> {
+    const id = this.requireGateway();
+    if (this.mediaDispatch.has(eventId)) throw new Error("Media review is already being delivered.");
+    const pendingManifest = this.media.pending(id).find((m) => m.updateId === eventId && m.reviewDigest === digest);
+    const manifest = pendingManifest ?? this.media.reviewed(id, "local-owner", eventId, digest);
+    if (!manifest || manifest.edited || manifest.kind !== "document")
+      throw new Error("Exact document review required. Voice and edits are not supported yet.");
+    assertSupportedAttachmentName(manifest.safeName);
+    const item = [...this.store.pending(id), ...this.store.approved(id)].find((i) => i.eventId === eventId);
+    if (!item) throw new Error("Media inbox review is unavailable.");
+    this.mediaDispatch.add(eventId);
+    try {
+      if (this.store.pending(id).some((i) => i.eventId === eventId))
+        if (this.store.pending(id).some((i) => i.eventId === eventId))
+          this.media.review(id, "local-owner", eventId, digest);
+      const validate = () => this.media.assertReviewed(id, "local-owner", eventId, digest);
+      validate();
+      const bytes = await new TelegramTransport(() => this.token, this.options.request).downloadFile(manifest.fileId);
+      validate();
+      if (manifest.size !== null && bytes.byteLength !== manifest.size) throw new Error("Document size changed.");
+      if (this.store.pending(id).some((i) => i.eventId === eventId))
+        if (this.store.pending(id).some((i) => i.eventId === eventId))
+          this.store.approveInbound(id, "local-owner", eventId, item.body, item.conversationId, item.senderId);
+      const receipt = await this.options.agents.deliverReviewedGatewayMessage({
+        agentId: this.chiefId,
+        gatewayId: id,
+        conversationId: item.conversationId,
+        senderId: item.senderId,
+        idempotencyKey: `gateway:${createHash("sha256").update(`${id}:${item.generation}:${eventId}`).digest("hex")}`,
+        text: manifest.caption || "Review the attached document.",
+        attachmentData: [{ name: manifest.safeName, mimeType: attachmentMimeTypeForName(manifest.safeName), bytes }],
+        validateApproval: () => {
+          validate();
+          this.store.assertApproved(id, eventId, item.generation);
+        },
+      });
+      this.store.delivered(id, eventId, item.generation, receipt.messageId);
+    } finally {
+      this.mediaDispatch.delete(eventId);
+    }
   }
   async approveReply(replyId: string, body: string, conversationId: string, senderId: string): Promise<void> {
     const id = this.requireGateway();
@@ -123,7 +190,7 @@ export class TelegramController {
               m.turnId === delivery.turn_id &&
               m.author === "assistant" &&
               m.status === "completed" &&
-              (m.itemType===undefined||m.itemType==="agentMessage"||m.itemType==="final_answer") &&
+              (m.itemType === undefined || m.itemType === "agentMessage" || m.itemType === "final_answer") &&
               m.text.trim(),
           )
           .map((m) => m.text);
@@ -163,20 +230,26 @@ export class TelegramController {
         accountId,
         credentialHandle: `vault:telegram:${accountId}`,
       });
-    this.gateway = new TelegramGateway(id, this.store, new TelegramTransport(() => this.token, this.options.request), {
-      deliver: async (item, key) => {
-        const receipt = await this.options.agents.deliverReviewedGatewayMessage({
-          agentId: this.chiefId,
-          idempotencyKey: key,
-          text: item.body,
-          gatewayId: id,
-          conversationId: item.conversationId,
-          senderId: item.senderId,
-          validateApproval: () => this.store.assertApproved(id, item.eventId, item.generation),
-        });
-        return receipt.messageId;
+    this.gateway = new TelegramGateway(
+      id,
+      this.store,
+      new TelegramTransport(() => this.token, this.options.request),
+      {
+        deliver: async (item, key) => {
+          const receipt = await this.options.agents.deliverReviewedGatewayMessage({
+            agentId: this.chiefId,
+            idempotencyKey: key,
+            text: item.body,
+            gatewayId: id,
+            conversationId: item.conversationId,
+            senderId: item.senderId,
+            validateApproval: () => this.store.assertApproved(id, item.eventId, item.generation),
+          });
+          return receipt.messageId;
+        },
       },
-    });
+      this.media,
+    );
   }
   private schedule(delay: number): void {
     if (this.stopped || this.timer) return;

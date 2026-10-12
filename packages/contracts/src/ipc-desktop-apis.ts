@@ -476,6 +476,7 @@ export interface HostDesktopApi {
   telegramEnable: () => Promise<void>;
   telegramRevoke: () => Promise<void>;
   telegramApproveReply: (input:{replyId:string;body:string;conversationId:string;senderId:string})=>Promise<void>;
+  telegramApproveMedia: (input: { eventId: string; reviewDigest: string }) => Promise<void>;
   telegramApprove: (input:{eventId:string;body:string;conversationId:string;senderId:string}) => Promise<void>;
 
   getRcGateway: () => Promise<import("./ipc-team-host").RcGatewayStatus>;

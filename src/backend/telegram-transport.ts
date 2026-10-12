@@ -1,4 +1,6 @@
 import { z } from "zod";
+export const TELEGRAM_FILE_BYTES_LIMIT = 20 * 1024 * 1024;
+
 const telegramMessage = z.object({
   message_id: z.number().int(),
   chat: z.object({ id: z.number().int() }),
@@ -47,8 +49,75 @@ export class TelegramTransport {
     const result = await this.call("sendMessage", { chat_id: conversationId, text: body }, signal);
     return String(z.object({ message_id: z.number().int() }).parse(result).message_id);
   }
+  /** Internal owner-reviewed media primitive. No provider path or credential escapes this boundary. */
+  async downloadFile(fileId: string, signal?: AbortSignal): Promise<Uint8Array> {
+    if (!fileId || fileId.length > 512 || /[\x00-\x20]/.test(fileId))
+      throw new Error("Invalid Telegram file identifier.");
+    try {
+      // Pin credential for metadata + bytes, so rotation cannot mix accounts across the await.
+      const token = this.token();
+      if (!token || !/^\d+:[A-Za-z0-9_-]+$/.test(token)) throw new TelegramTransportError();
+      const transport = new TelegramTransport(() => token, this.request);
+      const metadata = z
+        .object({
+          file_id: z.string(),
+          file_size: z.number().int().nonnegative().safe().optional(),
+          file_path: z.string(),
+        })
+        .parse(await transport.call("getFile", { file_id: fileId }, signal));
+      if (
+        metadata.file_id !== fileId ||
+        (metadata.file_size !== undefined && metadata.file_size > TELEGRAM_FILE_BYTES_LIMIT)
+      )
+        throw new TelegramTransportError();
+      // Cloud Bot API paths only. No absolute/local paths, URL, traversal, encoded separators or query strings.
+      if (
+        !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_.-]+)+$/.test(metadata.file_path) ||
+        metadata.file_path.split("/").some((p) => p === "." || p === "..")
+      )
+        throw new TelegramTransportError();
+      const deadline = AbortSignal.timeout(30000);
+      const response = await this.request(`https://api.telegram.org/file/bot${token}/${metadata.file_path}`, {
+        method: "GET",
+        redirect: "error",
+        signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
+      });
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new TelegramTransportError();
+      }
+      const length = response.headers.get("content-length");
+      if (length !== null && (!/^\d+$/.test(length) || Number(length) > TELEGRAM_FILE_BYTES_LIMIT)) {
+        await response.body?.cancel();
+        throw new TelegramTransportError();
+      }
+      const reader = response.body?.getReader();
+      if (!reader) throw new TelegramTransportError();
+      const chunks: Uint8Array[] = [];
+      let bytes = 0;
+      for (;;) {
+        const part = await reader.read();
+        if (part.done) break;
+        bytes += part.value.byteLength;
+        if (bytes > TELEGRAM_FILE_BYTES_LIMIT) {
+          await reader.cancel();
+          throw new TelegramTransportError();
+        }
+        chunks.push(part.value);
+      }
+      if (
+        (metadata.file_size !== undefined && bytes !== metadata.file_size) ||
+        (length !== null && bytes !== Number(length))
+      )
+        throw new TelegramTransportError();
+      return Buffer.concat(chunks, bytes);
+    } catch (error) {
+      if (error instanceof TelegramTransportError) throw error;
+      throw new TelegramTransportError();
+    }
+  }
   private async call(
-    method: "getUpdates" | "sendMessage" | "getMe",
+    method: "getUpdates" | "sendMessage" | "getMe" | "getFile",
     body: unknown,
     signal?: AbortSignal,
   ): Promise<unknown> {

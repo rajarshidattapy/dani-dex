@@ -101,7 +101,11 @@ export class GatewayStore {
     return Number(row.update_offset);
   }
 
-  ingest(gatewayId: string, event: GatewayEvent): "accepted" | "rejected" | "duplicate" {
+  ingest(
+    gatewayId: string,
+    event: GatewayEvent,
+    persistAccepted?: (db: DaniDexDatabase["connection"]) => void,
+  ): "accepted" | "rejected" | "duplicate" {
     identifier(event.eventId);
     identifier(event.conversationId);
     identifier(event.senderId);
@@ -135,6 +139,7 @@ export class GatewayStore {
           accepted ? redactText(event.body) : "",
           accepted ? "pending" : "rejected",
         );
+        if (accepted) persistAccepted?.(tx);
         tx.prepare("UPDATE projection_gateways SET update_offset=MAX(update_offset,?) WHERE gateway_id=?").run(
           event.nextOffset,
           gatewayId,

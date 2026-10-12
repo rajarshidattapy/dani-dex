@@ -1339,6 +1339,7 @@ const danidexApi: DaniDexDesktopApi = {
     telegramEnable: () => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramEnable),
     telegramRevoke: () => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramRevoke),
     telegramApproveReply:(input)=>ipcRenderer.invoke(IPC_CHANNELS.hostTelegramApproveReply,input),
+    telegramApproveMedia: (input) => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramApproveMedia, input),
     telegramApprove: (input) => ipcRenderer.invoke(IPC_CHANNELS.hostTelegramApprove,input),
     getRcGateway: () => ipcRenderer.invoke(IPC_CHANNELS.hostGetRcGateway).then(decodeLocalRcGateway),
     setRcGateway: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.hostSetRcGateway, enabled).then(decodeLocalRcGateway),

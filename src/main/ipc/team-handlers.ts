@@ -139,6 +139,10 @@ export function teamIpcHandlers({
       telegramEnable: handler(()=>telegram.enable()),
       telegramRevoke: handler(()=>telegram.revoke()),
       telegramApproveReply:payloadHandler((value:unknown)=>{if(!value||typeof value!=="object")throw new Error("Reply review required.");const v=value as Record<string,unknown>;return {replyId:requireString(v.replyId,"replyId",256),body:requireString(v.body,"body",4096),conversationId:requireString(v.conversationId,"conversationId",64),senderId:requireString(v.senderId,"senderId",64)};},v=>telegram.approveReply(v.replyId,v.body,v.conversationId,v.senderId)),
+      telegramApproveMedia: payloadHandler(
+        (value: unknown) => z.object({ eventId: z.string().min(1).max(64), reviewDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict().parse(value),
+        (v) => telegram.approveMedia(v.eventId, v.reviewDigest),
+      ),
       telegramApprove: payloadHandler((value:unknown)=>{if(!value || typeof value!=="object")throw new Error("Review required.");const v=value as Record<string,unknown>;return {eventId:requireString(v.eventId,"eventId",64),body:requireString(v.body,"body",32000),conversationId:requireString(v.conversationId,"conversationId",64),senderId:requireString(v.senderId,"senderId",64)};},v=>telegram.approveInbound(v.eventId,v.body,v.conversationId,v.senderId)),
 
       getRcGateway: handler(() => host.getRcGateway()),

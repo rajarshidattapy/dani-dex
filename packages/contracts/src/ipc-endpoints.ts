@@ -373,6 +373,7 @@ export const IPC_ENDPOINTS = {
     telegramEnable: request(IPC_CHANNELS.hostTelegramEnable),
     telegramRevoke: request(IPC_CHANNELS.hostTelegramRevoke),
     telegramApproveReply: request(IPC_CHANNELS.hostTelegramApproveReply),
+    telegramApproveMedia: request(IPC_CHANNELS.hostTelegramApproveMedia),
     telegramApprove: request(IPC_CHANNELS.hostTelegramApprove),
     getStatus: request(IPC_CHANNELS.hostGetStatus),
     getRcGateway: request(IPC_CHANNELS.hostGetRcGateway),

@@ -2230,6 +2230,7 @@ export function createMockDaniDex(options: MockDaniDexOptions = {}): MockDaniDex
     telegramEnable: async () => {},
     telegramRevoke: async () => {},
     telegramApprove: async () => {},
+    telegramApproveMedia: async () => {},
     telegramApproveReply: async () => {},
     telegramReject: async () => {},
     getRcGateway: async () => ({ enabled: false, phase: "off", origin: null, previousOrigin: null, changedAt: null, message: "RC gateway is unavailable in preview." }),

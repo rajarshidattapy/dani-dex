@@ -1234,6 +1234,7 @@ export function installDanidexStub(): void {
     telegramEnable: async () => {},
     telegramRevoke: async () => {},
     telegramApprove: async () => {},
+    telegramApproveMedia: async () => {},
     telegramApproveReply: async () => {},
     telegramReject: async () => {},
     getRcGateway: vi.fn().mockResolvedValue({ enabled: false, phase: "off", origin: null, previousOrigin: null, changedAt: null, message: null }),

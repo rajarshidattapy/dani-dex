@@ -279,6 +279,7 @@ export const IPC_CHANNELS = {
   hostTelegramEnable: "host:telegram-enable",
   hostTelegramRevoke: "host:telegram-revoke",
   hostTelegramApproveReply: "host:telegram-approve-reply",
+  hostTelegramApproveMedia: "host:telegram-approve-media",
   hostTelegramApprove: "host:telegram-approve",
   hostGetRcGateway: "host:get-rc-gateway",
   hostSetRcGateway: "host:set-rc-gateway",

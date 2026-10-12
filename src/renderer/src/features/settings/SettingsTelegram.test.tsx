@@ -6,7 +6,9 @@ it("pairs exact identities and sends exact owner reviewed text, never enabling o
     configured: true,
     enabled: false,
     error: null,
-    uncertainReplies:[{replyId:"r",conversationId:"12"}],replies:[],pending: [
+    uncertainReplies: [{ replyId: "r", conversationId: "12" }],
+    replies: [],
+    pending: [
       { eventId: "4", conversationId: "12", senderId: "7", body: "Reviewed request", generation: 1, nextOffset: 0 },
     ],
   };
@@ -40,4 +42,42 @@ it("pairs exact identities and sends exact owner reviewed text, never enabling o
   expect(host.telegramEnable).not.toHaveBeenCalled();
   expect(screen.getByText("Reply delivery unconfirmed: chat 12")).toBeTruthy();
   result.unmount();
+});
+it("shows exact document review and never routes media through text approval", async () => {
+  const media = {
+    updateId: "9",
+    safeName: "brief.txt",
+    senderId: "7",
+    conversationId: "12",
+    kind: "document",
+    size: 3,
+    messageId: "1",
+    edited: false,
+    caption: "review caption",
+    reviewDigest: "a".repeat(64),
+  };
+  const host = {
+    telegramStatus: vi.fn(async () => ({
+      configured: true,
+      enabled: true,
+      error: null,
+      pending: [{ eventId: "9", body: "[document]", conversationId: "12", senderId: "7" }],
+      mediaPending: [media],
+      replies: [],
+      uncertainReplies: [],
+    })),
+    telegramApprove: vi.fn(),
+    telegramApproveMedia: vi.fn(async () => {}),
+  };
+  Object.defineProperty(window, "danidex", { configurable: true, value: { host } });
+  const view = render(() => <SettingsTelegram />);
+  await waitFor(() => expect(screen.getByText("brief.txt from 7, chat 12")).toBeTruthy());
+  expect(screen.getByText("review caption")).toBeTruthy();
+  expect(screen.getByText("Approve this request for Chief").closest("button")?.disabled).toBe(true);
+  fireEvent.click(screen.getByText("Send reviewed document to Chief"));
+  await waitFor(() =>
+    expect(host.telegramApproveMedia).toHaveBeenCalledWith({ eventId: "9", reviewDigest: "a".repeat(64) }),
+  );
+  expect(host.telegramApprove).not.toHaveBeenCalled();
+  view.unmount();
 });

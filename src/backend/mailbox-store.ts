@@ -103,6 +103,8 @@ interface StoredReaction {
 }
 
 interface EnqueueInput {
+  /** Synchronous final source authorization after file copies, before durable queue commit. */
+  validateCommit?: () => void;
   channelId?: string;
   sender: StoredMessage["sender"];
   recipientAgentIds: string[];
@@ -276,6 +278,7 @@ export class MailboxStore {
     );
     try {
       validateRecipients();
+      input.validateCommit?.();
     } catch (error) {
       await this.#files.remove(this.#files.transferRoot(messageId));
       throw error;

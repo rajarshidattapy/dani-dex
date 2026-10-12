@@ -1,4 +1,5 @@
-import { GATEWAY_SCHEMA_SQL } from "./gateway-schema";
+import { TELEGRAM_MEDIA_SCHEMA_SQL } from "./telegram-media-store";
+import { ROUTINE_WATCH_SCHEMA_SQL } from "./routine-watch-schema";
 import type { DatabaseSync } from "node:sqlite";
 import { COMPUTER_USE_MCP_SERVER_NAME } from "@dani-dex/contracts/ipc";
 import { type DynamicRecord, isDynamicRecord, isNumber, isString } from "@dani-dex/contracts/runtime-values";
@@ -11,6 +12,14 @@ import {
   rebuildHarnessRoutesWithoutCascade,
 } from "./database/harness-routes";
 import { OPERATING_INSTRUCTIONS_SCHEMA_SQL } from "./database/operating-instructions";
+import {
+  GATEWAY_SCHEMA_SQL,
+  PEER_KEYS_SCHEMA_SQL,
+  PEER_EFFECTS_SCHEMA_SQL,
+  PEER_SCHEMA_SQL,
+  SLACK_INSTALLATIONS_SCHEMA_SQL,
+  WHATSAPP_RECEIPTS_SCHEMA_SQL,
+} from "./gateway-schema";
 import { MCP_SERVERS_SCHEMA_SQL } from "./mcp-schema";
 
 const BASELINE_SCHEMA_VERSION = 8;
@@ -382,7 +391,15 @@ const LATEST_SCHEMA_SQL =
   CHANNEL_SETTINGS_SCHEMA_SQL +
   MCP_SERVERS_SCHEMA_SQL +
   HARNESS_ROUTES_SCHEMA_SQL +
-  OPERATING_INSTRUCTIONS_SCHEMA_SQL;
+  OPERATING_INSTRUCTIONS_SCHEMA_SQL +
+  GATEWAY_SCHEMA_SQL +
+  WHATSAPP_RECEIPTS_SCHEMA_SQL +
+  SLACK_INSTALLATIONS_SCHEMA_SQL +
+  PEER_SCHEMA_SQL +
+  PEER_KEYS_SCHEMA_SQL +
+  PEER_EFFECTS_SCHEMA_SQL +
+  ROUTINE_WATCH_SCHEMA_SQL +
+  TELEGRAM_MEDIA_SCHEMA_SQL;
 
 // Silence here would ship new installs a table the migrations never produce, so an edit to the baseline
 // that moves this declaration out from under the substitution has to be loud.
@@ -391,9 +408,7 @@ function substituteOnce(source: string, search: string, replacement: string): st
   if (index === -1 || source.indexOf(search, index + search.length) !== -1) {
     throw new Error("The latest Dani-Dex schema could not be derived from the v8 baseline.");
   }
-  return `${source.slice(0, index)}${replacement}${source.slice(index + search.length)}
-${GATEWAY_SCHEMA_SQL}
-`;
+  return `${source.slice(0, index)}${replacement}${source.slice(index + search.length)}`;
 }
 
 export interface DaniDexMigrationOptions {
@@ -491,7 +506,14 @@ const MIGRATIONS: readonly DaniDexMigration[] = [
       db.exec(OPERATING_INSTRUCTIONS_SCHEMA_SQL);
     },
   },
-  {version:24,up:db=>db.exec(GATEWAY_SCHEMA_SQL)},
+  { version: 24, up: (db) => db.exec(GATEWAY_SCHEMA_SQL) },
+  { version: 25, up: (db) => db.exec(WHATSAPP_RECEIPTS_SCHEMA_SQL) },
+  { version: 26, up: (db) => db.exec(SLACK_INSTALLATIONS_SCHEMA_SQL) },
+  { version: 27, up: (db) => db.exec(PEER_SCHEMA_SQL) },
+  { version: 28, up: (db) => db.exec(PEER_KEYS_SCHEMA_SQL) },
+  { version: 29, up: (db) => db.exec(PEER_EFFECTS_SCHEMA_SQL) },
+  { version: 30, up: (db) => db.exec(ROUTINE_WATCH_SCHEMA_SQL) },
+  { version: 31, up: (db) => db.exec(TELEGRAM_MEDIA_SCHEMA_SQL) },
 ];
 
 const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? BASELINE_SCHEMA_VERSION;

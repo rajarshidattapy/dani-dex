@@ -1,3 +1,5 @@
+import { telegramMediaManifest } from "./telegram-media";
+import type { TelegramMediaStore } from "./telegram-media-store";
 import { createHash } from "node:crypto";
 import { GatewayStore, type GatewayInboxItem } from "./gateway-store";
 import { TelegramTransport, type TelegramUpdate } from "./telegram-transport";
@@ -14,6 +16,7 @@ export class TelegramGateway {
     private readonly store: GatewayStore,
     private readonly transport: TelegramTransport,
     private readonly delivery: TelegramDelivery,
+    private readonly media?: TelegramMediaStore,
   ) {}
   async poll(signal?: AbortSignal): Promise<void> {
     if (!this.store.enabled(this.gatewayId)) return;
@@ -37,6 +40,8 @@ export class TelegramGateway {
     const work = (async () => {
       for (const item of this.store.approved(this.gatewayId)) {
         if (signal?.aborted) break;
+        // Text approval must never stand in for exact media approval or attachment delivery.
+        if (this.media?.has(this.gatewayId, item.eventId)) continue;
         const key = `gateway:${createHash("sha256").update(`${this.gatewayId}:${item.generation}:${item.eventId}`).digest("hex")}`;
         const receipt = await this.delivery.deliver(item, key);
         this.store.delivered(this.gatewayId, item.eventId, item.generation, receipt);
@@ -52,16 +57,21 @@ export class TelegramGateway {
   private accept(update: TelegramUpdate): void {
     const m = update.message ?? update.edited_message;
     const unsupported = Boolean(update.edited_message || m?.voice || m?.document);
+    const manifest = this.media ? telegramMediaManifest(update) : null;
     // Unsupported updates are explicitly represented, not silently presented as a complete media adapter.
-    this.store.ingest(this.gatewayId, {
-      eventId: String(update.update_id),
-      nextOffset: update.update_id + 1,
-      conversationId: m ? String(m.chat.id) : "unsupported",
-      senderId: m?.from && !m.from.is_bot ? String(m.from.id) : "bot-or-unknown",
-      body: unsupported
-        ? "[Unsupported Telegram edit or media: owner review required]"
-        : (m?.text ?? m?.caption ?? "[Unsupported Telegram update]"),
-    });
+    this.store.ingest(
+      this.gatewayId,
+      {
+        eventId: String(update.update_id),
+        nextOffset: update.update_id + 1,
+        conversationId: m ? String(m.chat.id) : "unsupported",
+        senderId: m?.from && !m.from.is_bot ? String(m.from.id) : "bot-or-unknown",
+        body: unsupported
+          ? "[Unsupported Telegram edit or media: owner review required]"
+          : (m?.text ?? m?.caption ?? "[Unsupported Telegram update]"),
+      },
+      manifest ? (db) => this.media!.recordWithinInbox(db, this.gatewayId, manifest) : undefined,
+    );
   }
   async sendReviewedReply(replyId: string, signal?: AbortSignal): Promise<void> {
     const reply = this.store.claimReply(this.gatewayId, replyId);
