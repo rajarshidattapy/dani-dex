@@ -2225,23 +2225,43 @@ export function createMockDaniDex(options: MockDaniDexOptions = {}): MockDaniDex
         teamMembers = teamMembers.filter((member) => member.id !== memberId);
       },
       peerInbox: async () => [],
-      peerEnroll: async () => {throw new Error("Local enrollment unavailable in preview.");},
+      peerEnroll: async () => {
+        throw new Error("Local enrollment unavailable in preview.");
+      },
       peerDecide: async () => {},
-      v2Status: async () => ({contacts:[],grants:[],requests:[]}),
+      v2Status: async () => ({ contacts: [], grants: [], requests: [] }),
       v2RevokeGrant: async () => {},
       v2DisconnectPeer: async () => {},
-      telegramStatus: async () => ({configured:false,enabled:false,error:null,pending:[],replies:[],uncertainReplies:[]}),
-    telegramConfigure: async () => {},
-    telegramPair: async () => {},
-    telegramEnable: async () => {},
-    telegramRevoke: async () => {},
-    telegramApprove: async () => {},
-    telegramApproveMedia: async () => {},
-    telegramApproveReply: async () => {},
-    telegramReject: async () => {},
-    getRcGateway: async () => ({ enabled: false, phase: "off", origin: null, previousOrigin: null, changedAt: null, message: "RC gateway is unavailable in preview." }),
-      setRcGateway: async () => { throw Error("RC gateway is unavailable in preview."); },
-      createDevicePairingLink: async () => { throw new Error("Device pairing needs a running host; it is not available in preview."); },
+      telegramStatus: async () => ({
+        configured: false,
+        enabled: false,
+        error: null,
+        pending: [],
+        replies: [],
+        uncertainReplies: [],
+      }),
+      telegramConfigure: async () => {},
+      telegramPair: async () => {},
+      telegramEnable: async () => {},
+      telegramRevoke: async () => {},
+      telegramApprove: async () => {},
+      telegramApproveMedia: async () => {},
+      telegramApproveReply: async () => {},
+      telegramReject: async () => {},
+      getRcGateway: async () => ({
+        enabled: false,
+        phase: "off",
+        origin: null,
+        previousOrigin: null,
+        changedAt: null,
+        message: "RC gateway is unavailable in preview.",
+      }),
+      setRcGateway: async () => {
+        throw Error("RC gateway is unavailable in preview.");
+      },
+      createDevicePairingLink: async () => {
+        throw new Error("Device pairing needs a running host; it is not available in preview.");
+      },
       listSessions: async () => clone(sessions),
       revokeSession: async (sessionId) => {
         sessions = sessions.filter((session) => session.id !== sessionId);

@@ -756,7 +756,8 @@ export class TeamStore {
     const persisted = state.sessions.map((session) => ({
       id: session.id,
       memberId: session.memberId,
-      username: session.deviceName ?? state.members.find((member) => member.id === session.memberId)?.username ?? "unknown",
+      username:
+        session.deviceName ?? state.members.find((member) => member.id === session.memberId)?.username ?? "unknown",
       createdAt: session.createdAt,
       expiresAt: session.expiresAt,
     }));
@@ -927,7 +928,13 @@ export class TeamStore {
 
   /** Local pairing grants this owner's phone a revocable session without an account or password. */
   async openDeviceSession(deviceName: string, expiresAt: number): Promise<AuthenticatedMember> {
-    if (!deviceName.trim() || deviceName.length > 80 || !Number.isFinite(expiresAt) || expiresAt <= Date.now() || expiresAt > Date.now() + SESSION_TTL_MS)
+    if (
+      !deviceName.trim() ||
+      deviceName.length > 80 ||
+      !Number.isFinite(expiresAt) ||
+      expiresAt <= Date.now() ||
+      expiresAt > Date.now() + SESSION_TTL_MS
+    )
       throw new TeamStoreError("Invalid device session.");
     const state = this.#requireState();
     const owner = state.members.find((member) => member.role === "owner" && !member.disabled);
@@ -935,12 +942,16 @@ export class TeamStore {
     if (state.sessions.filter((session) => session.memberId === owner.id).length >= INPUT_LIMITS.sessionsPerMember)
       throw new TeamStoreError("Revoke an existing host session before pairing another device.");
     const result = this.#createSession(owner);
-    const session = state.sessions.find((candidate) => safeTextEqual(candidate.tokenHash, hashToken(result.sessionToken)));
+    const session = state.sessions.find((candidate) =>
+      safeTextEqual(candidate.tokenHash, hashToken(result.sessionToken)),
+    );
     if (!session) throw new TeamStoreError("The device session could not be created.");
     session.deviceName = deviceName.trim();
     session.expiresAt = new Date(expiresAt).toISOString();
     result.sessionExpiresAt = session.expiresAt;
-    try { await this.#persist(); } catch (error) {
+    try {
+      await this.#persist();
+    } catch (error) {
       state.sessions = state.sessions.filter((item) => item !== session);
       throw error;
     }

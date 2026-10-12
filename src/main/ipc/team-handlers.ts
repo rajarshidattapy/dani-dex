@@ -1,7 +1,10 @@
 import { type HostStatus, LOCAL_SERVER_ID, type ServerSummary } from "@dani-dex/contracts/ipc";
+import { z } from "zod";
 import type { HostService } from "../host-service";
 import type { RemoteDesktopManager } from "../remote-desktop-manager";
 import type { RemoteServerManager } from "../remote-server-manager";
+import type { TelegramController } from "../telegram-controller";
+import type { V2Control } from "../v2-control";
 import { parseAgentRequest } from "./agent-inputs";
 import { handler, type IpcGroupHandlers, payloadHandler } from "./define-ipc-group";
 import { routeToServer } from "./route-to-server";
@@ -25,10 +28,6 @@ import {
   parseUpdateTeamMember,
 } from "./server-inputs";
 import { requireString, stringPayload } from "./validation";
-
-import { z } from "zod";
-import type { V2Control } from "../v2-control";
-import type { TelegramController } from "../telegram-controller";
 
 interface TeamIpcDependencies {
   telegram: TelegramController;
@@ -176,11 +175,7 @@ export function teamIpcHandlers({
             })
             .strict()
             .parse(value);
-          return v as {
-            review: import("@dani-dex/contracts/ipc").PeerOwnerReview;
-            decision: "decline";
-            grantId: null;
-          };
+          return v;
         },
         (v) => v2Control.decidePeer(v),
       ),
@@ -195,7 +190,7 @@ export function teamIpcHandlers({
       telegramPair: payloadHandler(
         (value: unknown) => {
           if (!value || typeof value !== "object") throw new Error("Pairing required.");
-          const v = value as Record<string, unknown>;
+          const v = z.record(z.string(), z.unknown()).parse(value);
           return {
             conversationId: requireString(v.conversationId, "conversationId", 64),
             senderId: requireString(v.senderId, "senderId", 64),
@@ -208,7 +203,7 @@ export function teamIpcHandlers({
       telegramApproveReply: payloadHandler(
         (value: unknown) => {
           if (!value || typeof value !== "object") throw new Error("Reply review required.");
-          const v = value as Record<string, unknown>;
+          const v = z.record(z.string(), z.unknown()).parse(value);
           return {
             replyId: requireString(v.replyId, "replyId", 256),
             body: requireString(v.body, "body", 4096),
@@ -229,7 +224,7 @@ export function teamIpcHandlers({
       telegramApprove: payloadHandler(
         (value: unknown) => {
           if (!value || typeof value !== "object") throw new Error("Review required.");
-          const v = value as Record<string, unknown>;
+          const v = z.record(z.string(), z.unknown()).parse(value);
           return {
             eventId: requireString(v.eventId, "eventId", 64),
             body: requireString(v.body, "body", 32000),

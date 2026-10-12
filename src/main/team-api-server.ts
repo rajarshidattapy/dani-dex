@@ -1,4 +1,3 @@
-import { routeDevicePairing } from "./team-api/route-device-pairing";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -57,6 +56,7 @@ import { createDaniDexLogger, toLogValue } from "@dani-dex/logging";
 import type * as Ws from "ws";
 import { McpServerError } from "../backend/mcp-server-store";
 import type { TeamChatStore } from "../backend/team-chat-store";
+import { DevicePairingService } from "./device-pairing-service";
 import { RemoteScreenError } from "./remote-screen-gateway";
 import type { TeamApiOptions, TeamApiSidebarLayout } from "./team-api/dependencies";
 import { HttpError } from "./team-api/http-error";
@@ -76,14 +76,13 @@ import {
 import { routeAgents } from "./team-api/route-agents";
 import { routeBrowser } from "./team-api/route-browser";
 import { routeChannels } from "./team-api/route-channels";
+import { routeDevicePairing } from "./team-api/route-device-pairing";
 import { routeDirect } from "./team-api/route-direct";
 import { routeFiles } from "./team-api/route-files";
 import { routeMcpServers } from "./team-api/route-mcp";
 import { routeRemoteScreen } from "./team-api/route-remote-screen";
 import { routeTeam } from "./team-api/route-team";
 import { TeamStoreError } from "./team-store";
-import { DevicePairingService } from "./device-pairing-service";
-
 
 const EVENT_PAYLOAD_LIMIT = 256 * 1_024;
 const TYPING_TIMEOUT_MS = 5_000;
@@ -167,7 +166,9 @@ export class TeamApiServer {
     this.#devicePairing = new DevicePairingService(options.store, this.#now, options.devicePairingStatePath);
   }
 
-  createDevicePairingLink(origin: string) { return this.#devicePairing.createLink(origin); }
+  createDevicePairingLink(origin: string) {
+    return this.#devicePairing.createLink(origin);
+  }
 
   get port(): number | null {
     return this.#port;
@@ -432,7 +433,12 @@ export class TeamApiServer {
         return;
       }
 
-      if (await routeDevicePairing(request, response, url, this.#devicePairing, () => this.#checkRate(request, "device-pairing")) === "handled") return;
+      if (
+        (await routeDevicePairing(request, response, url, this.#devicePairing, () =>
+          this.#checkRate(request, "device-pairing"),
+        )) === "handled"
+      )
+        return;
 
       const protocolIssue = this.#protocolIssue(request);
       if (protocolIssue) return this.#json(response, protocolIssue.status, protocolIssue.body);

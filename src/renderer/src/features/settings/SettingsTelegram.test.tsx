@@ -1,6 +1,7 @@
-import { render, fireEvent, waitFor, screen } from "@solidjs/testing-library";
+import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { expect, it, vi } from "vitest";
 import { SettingsTelegram } from "./SettingsTelegram";
+
 it("pairs exact identities and sends exact owner reviewed text, never enabling on credential save", async () => {
   const status = {
     configured: true,

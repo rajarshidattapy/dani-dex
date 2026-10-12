@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { expect, it, vi } from "vitest";
 import { SettingsPeople } from "./SettingsPeople";
+
 it("guides public-key enrollment without enabling transport and dismisses only the exact unknown review", async () => {
   const review = {
     requestId: "r",

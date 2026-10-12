@@ -1,7 +1,13 @@
 import { expect, it, vi } from "vitest";
 import { fetchReviewedTelegramMedia, telegramMediaManifest } from "./telegram-media";
 import type { TelegramUpdate } from "./telegram-transport";
-const update = (): TelegramUpdate => ({
+
+function requiredManifest(event: TelegramUpdate) {
+  const manifest = telegramMediaManifest(event);
+  if (!manifest) throw Error("Missing media fixture");
+  return manifest;
+}
+const update = () => ({
   update_id: 4,
   message: {
     message_id: 1,
@@ -36,9 +42,9 @@ it("changes review digest when caption, sender, file or edit identity changes", 
   const digest = telegramMediaManifest(original)?.reviewDigest;
   for (const changed of [
     { ...original, update_id: 5 },
-    { ...original, message: { ...original.message!, caption: "Changed" } },
-    { ...original, message: { ...original.message!, from: { id: 8 } } },
-    { ...original, message: { ...original.message!, document: { file_id: "f2", file_unique_id: "u1" } } },
+    { ...original, message: { ...original.message, caption: "Changed" } },
+    { ...original, message: { ...original.message, from: { id: 8 } } },
+    { ...original, message: { ...original.message, document: { file_id: "f2", file_unique_id: "u1" } } },
     { update_id: 4, edited_message: original.message },
   ])
     expect(telegramMediaManifest(changed)?.reviewDigest).not.toBe(digest);
@@ -50,14 +56,14 @@ it("does not normalize edited content into an original request", () => {
 it("refuses bot, ambiguous, invalid and oversize media, does not infer consent", () => {
   const original = update();
   for (const changed of [
-    { ...original, message: { ...original.message!, from: { id: 7, is_bot: true } } },
-    { ...original, message: { ...original.message!, from: undefined } },
-    { ...original, message: { ...original.message!, voice: { file_id: "v", file_unique_id: "u" } } },
+    { ...original, message: { ...original.message, from: { id: 7, is_bot: true } } },
+    { ...original, message: { ...original.message, from: undefined } },
+    { ...original, message: { ...original.message, voice: { file_id: "v", file_unique_id: "u" } } },
     {
       ...original,
-      message: { ...original.message!, document: { file_id: "f", file_unique_id: "u", file_size: 21 * 1024 * 1024 } },
+      message: { ...original.message, document: { file_id: "f", file_unique_id: "u", file_size: 21 * 1024 * 1024 } },
     },
-    { ...original, message: { ...original.message!, document: { file_id: "f" } } },
+    { ...original, message: { ...original.message, document: { file_id: "f" } } },
   ])
     expect(telegramMediaManifest(changed)).toBeNull();
 });
@@ -65,13 +71,13 @@ it("uses a safe fallback for empty/path/control-only names and records unknown s
   const original = update();
   const manifest = telegramMediaManifest({
     ...original,
-    message: { ...original.message!, document: { file_id: "f", file_unique_id: "u", file_name: "..\\\u0000" } },
+    message: { ...original.message, document: { file_id: "f", file_unique_id: "u", file_name: "..\\\u0000" } },
   });
   expect(manifest).toMatchObject({ safeName: "document.bin", size: null });
 });
 it("rechecks exact owner/source authority after download before releasing any bytes", async () => {
   const event = update();
-  const reviewedDigest = telegramMediaManifest(event)!.reviewDigest;
+  const reviewedDigest = requiredManifest(event).reviewDigest;
   const validateOwnerSource = vi.fn();
   const download = vi.fn(async () => new Uint8Array([1, 2, 3]));
   const result = await fetchReviewedTelegramMedia({ update: event, reviewedDigest, validateOwnerSource, download });
@@ -102,7 +108,7 @@ it("will not fetch stale review, separately reviewed edit or revoked source", as
   await expect(
     fetchReviewedTelegramMedia({
       update: edit,
-      reviewedDigest: telegramMediaManifest(edit)!.reviewDigest,
+      reviewedDigest: requiredManifest(edit).reviewDigest,
       validateOwnerSource: () => {},
       download,
     }),
@@ -110,7 +116,7 @@ it("will not fetch stale review, separately reviewed edit or revoked source", as
   await expect(
     fetchReviewedTelegramMedia({
       update: event,
-      reviewedDigest: telegramMediaManifest(event)!.reviewDigest,
+      reviewedDigest: requiredManifest(event).reviewDigest,
       validateOwnerSource: () => {
         throw Error("Revoked");
       },

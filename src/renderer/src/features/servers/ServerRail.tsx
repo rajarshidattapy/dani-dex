@@ -1,9 +1,9 @@
-import { RobotAvatar } from "../agents/manzanilla/RobotAvatar";
 import type { ServerSummary } from "@dani-dex/contracts/ipc";
 import { createEffect, createSignal, createStore, For, onCleanup, Show } from "solid-js";
 import { createScrollFades } from "../../components/createScrollFades";
 import { createVerticalDragPreview } from "../../components/createVerticalDragPreview";
 import { BellOff, buttonVariants, ChartArea, ContextMenu, ServerGradientLogo, Tooltip } from "../../components/ui";
+import { RobotAvatar } from "../agents/manzanilla/RobotAvatar";
 
 const SERVER_RAIL_TOOLTIP_OPEN_DELAY = 150;
 
@@ -426,6 +426,7 @@ function ServerMark(props: { server: ServerSummary }) {
     },
   );
   return (
+    // biome-ignore lint/a11y/useValidAriaRole: RobotAvatar role selects the character, not a DOM ARIA role.
     <Show when={props.server.kind !== "local"} fallback={<RobotAvatar size={42} label="Chief of staff" role="chief" />}>
       <Show when={!failed() ? props.server.logoUrl : null} fallback={<ServerGradientLogo seed={props.server.id} />}>
         {(url) => <img class="server-rail-logo" src={url()} alt="" draggable={false} onError={() => setFailed(true)} />}

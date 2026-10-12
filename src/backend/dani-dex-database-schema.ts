@@ -1,5 +1,3 @@
-import { TELEGRAM_MEDIA_SCHEMA_SQL } from "./telegram-media-store";
-import { ROUTINE_WATCH_SCHEMA_SQL } from "./routine-watch-schema";
 import type { DatabaseSync } from "node:sqlite";
 import { COMPUTER_USE_MCP_SERVER_NAME } from "@dani-dex/contracts/ipc";
 import { type DynamicRecord, isDynamicRecord, isNumber, isString } from "@dani-dex/contracts/runtime-values";
@@ -14,13 +12,15 @@ import {
 import { OPERATING_INSTRUCTIONS_SCHEMA_SQL } from "./database/operating-instructions";
 import {
   GATEWAY_SCHEMA_SQL,
-  PEER_KEYS_SCHEMA_SQL,
   PEER_EFFECTS_SCHEMA_SQL,
+  PEER_KEYS_SCHEMA_SQL,
   PEER_SCHEMA_SQL,
   SLACK_INSTALLATIONS_SCHEMA_SQL,
   WHATSAPP_RECEIPTS_SCHEMA_SQL,
 } from "./gateway-schema";
 import { MCP_SERVERS_SCHEMA_SQL } from "./mcp-schema";
+import { ROUTINE_WATCH_SCHEMA_SQL } from "./routine-watch-schema";
+import { TELEGRAM_MEDIA_SCHEMA_SQL } from "./telegram-media-store";
 
 const BASELINE_SCHEMA_VERSION = 8;
 

@@ -26,10 +26,27 @@ export interface TelegramMediaManifest {
   /** Bind owner review to the exact metadata, not to an unsupported-media marker. */
   reviewDigest: string;
 }
+export const telegramMediaManifestSchema = z
+  .object({
+    updateId: z.string(),
+    messageId: z.string(),
+    conversationId: z.string(),
+    senderId: z.string(),
+    kind: z.enum(["voice", "document"]),
+    fileId: z.string().min(1),
+    uniqueId: z.string().min(1),
+    size: z.number().int().nonnegative().safe().nullable(),
+    claimedMimeType: z.string().nullable(),
+    safeName: z.string(),
+    caption: z.string(),
+    edited: z.boolean(),
+    reviewDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
 /** Parsing only. Does not authenticate sender, pair a source, fetch, transcribe, or deliver. */
 export function telegramMediaManifest(update: TelegramUpdate): TelegramMediaManifest | null {
   const message = update.message ?? update.edited_message;
-  if (!message || !message.from || message.from.is_bot || (message.voice && message.document)) return null;
+  if (!message?.from || message.from.is_bot || (message.voice && message.document)) return null;
   const kind = message.voice ? "voice" : message.document ? "document" : null;
   if (!kind) return null;
   const parsed = media.safeParse(kind === "voice" ? message.voice : message.document);
@@ -39,7 +56,9 @@ export function telegramMediaManifest(update: TelegramUpdate): TelegramMediaMani
   const name = file.file_name
     ?.split(/[\\/]/)
     .pop()
-    ?.replace(/[\x00-\x1f\x7f]/g, "")
+    ?.split("")
+    .filter((character) => character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127)
+    .join("")
     .trim();
   const safeName =
     name && name !== "." && name !== ".." ? name.slice(0, 120) : kind === "voice" ? "voice.ogg" : "document.bin";

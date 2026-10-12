@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { DaniDexDatabase } from "./dani-dex-database";
-import type { TelegramMediaManifest } from "./telegram-media";
+import { type TelegramMediaManifest, telegramMediaManifestSchema } from "./telegram-media";
 export const TELEGRAM_MEDIA_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS projection_telegram_media (
  gateway_id TEXT NOT NULL,
@@ -52,7 +52,8 @@ export class TelegramMediaStore {
     const row = this.database.connection
       .prepare("SELECT manifest_json FROM projection_telegram_media WHERE gateway_id=? AND event_id=?")
       .get(gatewayId, eventId);
-    return JSON.parse(String(row!.manifest_json)) as TelegramMediaManifest;
+    if (!row) throw Error("Media record no longer exists.");
+    return telegramMediaManifestSchema.parse(JSON.parse(String(row.manifest_json)));
   }
   has(gatewayId: string, eventId: string): boolean {
     return Boolean(
@@ -68,7 +69,7 @@ export class TelegramMediaStore {
         `SELECT m.manifest_json FROM projection_telegram_media m JOIN projection_gateway_inbox i USING(gateway_id,event_id) JOIN projection_gateways g USING(gateway_id) WHERE m.gateway_id=? AND i.state IN ('pending','approved') AND g.enabled=1 AND m.generation=g.generation AND i.generation=g.generation`,
       )
       .all(gatewayId)
-      .map((r) => JSON.parse(String(r.manifest_json)) as TelegramMediaManifest);
+      .map((r) => telegramMediaManifestSchema.parse(JSON.parse(String(r.manifest_json))));
   }
   review(gatewayId: string, ownerId: string, eventId: string, digest: string): void {
     this.change(gatewayId, eventId, "reviewed", (db) => {
@@ -78,7 +79,7 @@ export class TelegramMediaStore {
         )
         .get(gatewayId, eventId, digest, ownerId);
       if (!row) throw Error("Exact owner media review required.");
-      if ((JSON.parse(String(row.manifest_json)) as TelegramMediaManifest).edited)
+      if (telegramMediaManifestSchema.parse(JSON.parse(String(row.manifest_json))).edited)
         throw Error("Edit change review is unavailable.");
       db.prepare("UPDATE projection_telegram_media SET reviewed_digest=? WHERE gateway_id=? AND event_id=?").run(
         digest,

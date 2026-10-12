@@ -6,6 +6,7 @@ import { DaniDexDatabase } from "./dani-dex-database";
 import { GatewayStore } from "./gateway-store";
 import { telegramMediaManifest } from "./telegram-media";
 import { TelegramMediaStore } from "./telegram-media-store";
+
 it("persists exact owner media review across restart, blocks changed identity/wrong owner/revoke", async () => {
   const root = await mkdtemp(join(tmpdir(), "tg-media-store-"));
   let db = new DaniDexDatabase(root);
@@ -25,7 +26,8 @@ it("persists exact owner media review across restart, blocks changed identity/wr
     const manifest = telegramMediaManifest({
       update_id: 4,
       message: { message_id: 1, chat: { id: 12 }, from: { id: 7 }, document: { file_id: "f", file_unique_id: "u" } },
-    })!;
+    });
+    if (!manifest) throw Error("Missing media fixture");
     gateway.ingest("g", {
       eventId: "4",
       conversationId: "12",
@@ -84,7 +86,8 @@ it("does not record rejected stranger metadata or approve edits as original mess
         from: { id: 7 },
         document: { file_id: "f", file_unique_id: "u" },
       },
-    })!;
+    });
+    if (!manifest) throw Error("Missing media fixture");
     const media = new TelegramMediaStore(db);
     gateway.ingest("g", { eventId: "4", conversationId: "12", senderId: "7", body: "edit", nextOffset: 5 });
     media.record("g", manifest);

@@ -1,4 +1,3 @@
-import { RcGateway } from "./rc-gateway";
 import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { dirname, join } from "node:path";
@@ -45,6 +44,7 @@ import type { ChannelService } from "../backend/channel-service";
 import type { TeamChatStore } from "../backend/team-chat-store";
 import { BrowserViewGateway } from "./browser-view-gateway";
 import type { VerifiedRemoteSessionTicket } from "./central-auth-manager";
+import { RcGateway } from "./rc-gateway";
 import type { RemoteDesktopRuntimePaths } from "./remote-desktop-runtime-artifact";
 import { appendRemoteDiagnosticLog } from "./remote-diagnostics";
 import { RemoteScreenGateway, type RemoteScreenGatewayCreateRuntime } from "./remote-screen-gateway";
@@ -269,11 +269,33 @@ export class HostService extends EventEmitter<HostEvents> {
 
   async initializeRcGateway(): Promise<void> {
     if (!this.#options.rcGateway) return;
-    this.#rcGateway = new RcGateway({ ...this.#options.rcGateway, target: async () => { await this.startDevelopmentLocal(); const url = this.#localApiUrl(); if (!url) throw Error("Host API unavailable"); return url; } });
+    this.#rcGateway = new RcGateway({
+      ...this.#options.rcGateway,
+      target: async () => {
+        await this.startDevelopmentLocal();
+        const url = this.#localApiUrl();
+        if (!url) throw Error("Host API unavailable");
+        return url;
+      },
+    });
     await this.#rcGateway.initialize();
   }
-  getRcGateway() { return this.#rcGateway?.getStatus() ?? { enabled: false, phase: "off" as const, origin: null, previousOrigin: null, changedAt: null, message: "RC tunnel runtime is not installed on this host." }; }
-  async setRcGateway(enabled: boolean) { if (!this.#rcGateway) throw Error("RC tunnel runtime is not installed on this host."); return this.#rcGateway.setEnabled(enabled); }
+  getRcGateway() {
+    return (
+      this.#rcGateway?.getStatus() ?? {
+        enabled: false,
+        phase: "off" as const,
+        origin: null,
+        previousOrigin: null,
+        changedAt: null,
+        message: "RC tunnel runtime is not installed on this host.",
+      }
+    );
+  }
+  async setRcGateway(enabled: boolean) {
+    if (!this.#rcGateway) throw Error("RC tunnel runtime is not installed on this host.");
+    return this.#rcGateway.setEnabled(enabled);
+  }
 
   getStatus(): HostStatus {
     const capabilities = this.#remoteScreen.capabilities();
@@ -624,9 +646,18 @@ export class HostService extends EventEmitter<HostEvents> {
     return this.getStatus();
   }
 
-  async createDevicePairingLink(origin: string): Promise<{ url: string; expiresAt: number; code: string; appUrl: string }> {
+  async createDevicePairingLink(
+    origin: string,
+  ): Promise<{ url: string; expiresAt: number; code: string; appUrl: string }> {
     const candidate = new URL(origin);
-    if (candidate.protocol !== "https:" || candidate.username || candidate.password || candidate.pathname !== "/" || candidate.search || candidate.hash)
+    if (
+      candidate.protocol !== "https:" ||
+      candidate.username ||
+      candidate.password ||
+      candidate.pathname !== "/" ||
+      candidate.search ||
+      candidate.hash
+    )
       throw new Error("Device pairing needs the host's HTTPS origin.");
     if (!this.#options.store.configured) {
       await this.#options.store.configure("Dani-Dex", "device-owner", randomBytes(32).toString("base64url"));
@@ -923,7 +954,9 @@ export class HostService extends EventEmitter<HostEvents> {
 
   async #revokeWebRtcSession(sessionId: string): Promise<void> {
     await Promise.all([
-      this.#status.message === "Local development host is ready." ? undefined : this.#options.endRemoteSession?.(sessionId),
+      this.#status.message === "Local development host is ready."
+        ? undefined
+        : this.#options.endRemoteSession?.(sessionId),
       this.#webrtcGateway?.revokeSession(sessionId),
     ]);
   }

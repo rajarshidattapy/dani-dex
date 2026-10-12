@@ -1,5 +1,5 @@
-import { createStore, onSettled, For, Show } from "solid-js";
 import type { TelegramGatewayStatus } from "@dani-dex/contracts/ipc";
+import { createStore, For, onSettled, Show } from "solid-js";
 import {
   Button,
   Input,
@@ -12,13 +12,20 @@ import {
   Text,
 } from "../../components/ui";
 export function SettingsTelegram() {
-  const [state, set] = createStore({
+  const [state, set] = createStore<{
+    token: string;
+    chat: string;
+    sender: string;
+    busy: boolean;
+    error: string;
+    status: TelegramGatewayStatus | null;
+  }>({
     token: "",
     chat: "",
     sender: "",
     busy: false,
     error: "",
-    status: null as TelegramGatewayStatus | null,
+    status: null,
   });
   let disposed = false;
   async function refresh() {

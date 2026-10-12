@@ -1,9 +1,10 @@
-import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { MailboxStore } from "./mailbox-store";
 import { enqueueReviewedGatewayInput } from "./reviewed-gateway-mailbox";
+
 it("uses durable mailbox receipt and cleans revoked and duplicate document drafts", async () => {
   const root = await mkdtemp(join(tmpdir(), "gateway-mailbox-"));
   const m = new MailboxStore(join(root, "user"), join(root, "shared"));
@@ -23,10 +24,12 @@ it("uses durable mailbox receipt and cleans revoked and duplicate document draft
     };
     const first = await enqueueReviewedGatewayInput(m, input);
     expect(checks).toBe(3);
-    const queued = m.nextQueued("chief")!;
+    const queued = m.nextQueued("chief");
+    if (!queued) throw Error("Missing queued message");
     expect(queued.delivery.attachments).toHaveLength(1);
     const file = await m.resolveAttachment(queued.delivery.attachments[0].id);
-    expect(await readFile(file!.path, "utf8")).toBe("real file bytes");
+    if (!file) throw Error("Missing attachment");
+    expect(await readFile(file.path, "utf8")).toBe("real file bytes");
     const duplicate = await enqueueReviewedGatewayInput(m, input);
     expect(duplicate.messageId).toBe(first.messageId);
     expect(await readdir(join(root, "user", "attachment-drafts"))).toEqual([]);

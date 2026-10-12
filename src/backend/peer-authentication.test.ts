@@ -39,5 +39,16 @@ it("binds enrolled Ed25519 key to raw bytes, timestamp and exact context, not cl
   expect(() => authenticatePeer(raw, { ...headers, contextId: "other" }, lookup, now, "owner-a")).toThrow();
   expect(() => authenticatePeer(raw, headers, lookup, now + 300001, "owner-a")).toThrow();
   expect(() => authenticatePeer(raw, headers, () => null, now, "owner-a")).toThrow();
-  expect(() => authenticatePeer(raw, headers, (id) => ({ ...lookup(id)!, revoked: true }), now, "owner-a")).toThrow();
+  expect(() =>
+    authenticatePeer(
+      raw,
+      headers,
+      (id) => {
+        const enrolled = lookup(id);
+        return enrolled ? { ...enrolled, revoked: true } : null;
+      },
+      now,
+      "owner-a",
+    ),
+  ).toThrow();
 });

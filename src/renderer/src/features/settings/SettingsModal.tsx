@@ -230,9 +230,10 @@ export function SettingsModal(props: SettingsModalProps) {
   const hostedSites = createSettingsHostedSitesStore(props, () => activeTab() === "hosted-sites");
 
   const title = () => i18n.t(navItem(activeTab()).titleKey);
-  const description = () => activeTab() === "mobile-connect" && props.onlineServices === false
-    ? "Pair your phone with this running Dani-Dex host. No account needed."
-    : i18n.t(navItem(activeTab()).descriptionKey);
+  const description = () =>
+    activeTab() === "mobile-connect" && props.onlineServices === false
+      ? "Pair your phone with this running Dani-Dex host. No account needed."
+      : i18n.t(navItem(activeTab()).descriptionKey);
 
   const tabsProps = {
     get value() {
@@ -338,10 +339,7 @@ export function SettingsModal(props: SettingsModalProps) {
         sidebar={
           <Tabs.List class="settings-modal-nav" aria-label={i18n.t("settings.sections.label")}>
             {navItems
-              .filter(
-                (item) =>
-                  props.onlineServices !== false || item.value !== "hosted-sites",
-              )
+              .filter((item) => props.onlineServices !== false || item.value !== "hosted-sites")
               .map((item) => {
                 const NavIcon = item.icon;
                 return (
