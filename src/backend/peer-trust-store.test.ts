@@ -155,3 +155,33 @@ it("execution requires accepted exact transport/context request and intent-scope
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it("blocks identical and changed replay after resolved request content is pruned, including after restart", async () => {
+  const root = await mkdtemp(join(tmpdir(), "peer-replay-"));
+  let db = new DaniDexDatabase(root);
+  await db.initialize();
+  const source = { contactId: "sam", transportPrincipal: "key", requestId: "replay", contextId: "topic" };
+  try {
+    let store = new PeerTrustStore(db);
+    store.connect({ contactId: "sam", transportPrincipal: "key", humanHandle: "sam" });
+    store.receive(source, envelope, "Dinner?");
+    store.decide("replay", "decline", null);
+    db.connection
+      .prepare("UPDATE projection_peer_received SET received_at=? WHERE request_id=?")
+      .run(Date.now() - 600001, "replay");
+    store.prune();
+    expect(store.state("replay")).toBeNull();
+    db.close();
+    db = new DaniDexDatabase(root);
+    await db.initialize();
+    store = new PeerTrustStore(db);
+    expect(() => store.receive(source, envelope, "Dinner?")).toThrow("replayed");
+    expect(() => store.receive(source, envelope, "Changed")).toThrow("replayed");
+    expect(() => store.receive(null, envelope, "Dinner?", "replay")).toThrow("replayed");
+    expect(store.state("replay")).toBeNull();
+    expect(store.receive({ ...source, requestId: "fresh" }, envelope, "Dinner?")).toBe("owner-review");
+  } finally {
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

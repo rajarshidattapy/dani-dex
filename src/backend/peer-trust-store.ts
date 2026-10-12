@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { z } from "zod";
 import type { DaniDexDatabase } from "./dani-dex-database";
 import { type VerifiedPeerSource, validatePeerEnvelope } from "./peer-protocol";
 
@@ -29,7 +30,7 @@ export class PeerTrustStore {
       !input.purpose.trim() ||
       input.purpose.length > 500 ||
       input.capabilities.length === 0 ||
-      input.capabilities.some((c) => !CAPS.includes(c as (typeof CAPS)[number])) ||
+      input.capabilities.some((c) => !CAPS.some((allowed) => allowed === c)) ||
       input.audiences.length === 0 ||
       input.audiences.length > 20 ||
       input.capabilities.length > CAPS.length ||
@@ -78,6 +79,11 @@ export class PeerTrustStore {
     const envelope = validatePeerEnvelope(value);
     if (text.length > 32000) throw new Error("Peer message too long.");
     const requestId = source?.requestId ?? unverifiedRequestId ?? randomUUID();
+    const tombstone = this.database.connection
+      .prepare("SELECT expires_at FROM projection_peer_replay_tombstones WHERE request_id=?")
+      .get(requestId);
+    if (tombstone && Number(tombstone.expires_at) > Date.now())
+      throw new Error("Peer request was resolved and cannot be replayed.");
     const previous = this.database.connection
       .prepare(
         "SELECT transport_principal,context_id,envelope_json,text FROM projection_peer_requests WHERE request_id=?",
@@ -143,10 +149,13 @@ export class PeerTrustStore {
       )
       .get(input.grantId, input.contactId, input.purpose, now);
     if (!g) return false;
-    const caps = JSON.parse(String(g.capabilities_json)) as string[];
-    const audiences = JSON.parse(String(g.audiences_json)) as string[];
+    const caps = z.array(z.enum(CAPS)).parse(JSON.parse(String(g.capabilities_json)));
+    const audiences = z
+      .array(z.string().min(1).max(256))
+      .max(20)
+      .parse(JSON.parse(String(g.audiences_json)));
     return (
-      caps.includes(input.capability) &&
+      caps.some((capability) => capability === input.capability) &&
       input.audiences.length > 0 &&
       input.audiences.every((a) => audiences.includes(a))
     );
@@ -254,14 +263,9 @@ export class PeerTrustStore {
     return createHash("sha256").update(json).digest("hex");
   }
   private effectCapability(intent: string): string | null {
-    return (
-      (
-        {
-          request_freebusy: "calendar.freebusy",
-          propose_times: "plans.propose",
-        } as Record<string, string>
-      )[intent] ?? null
-    );
+    if (intent === "request_freebusy") return "calendar.freebusy";
+    if (intent === "propose_times") return "plans.propose";
+    return null;
   }
   /** Atomic single-use claim. No executor-selected identity, audience, capability or money flags. */
   claimEffect(
@@ -280,7 +284,10 @@ export class PeerTrustStore {
           throw Error("NO_EFFECT_CLAIM");
         const envelope = validatePeerEnvelope(JSON.parse(String(r.envelope_json)));
         const capability = this.effectCapability(envelope.intent);
-        const audiences = JSON.parse(String(r.audiences_json)) as string[];
+        const audiences = z
+          .array(z.string().min(1).max(256))
+          .max(20)
+          .parse(JSON.parse(String(r.audiences_json)));
         const money = false;
         if (!capability || r.capability !== capability) throw Error("NO_EFFECT_CLAIM");
         const contact = db
