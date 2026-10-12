@@ -132,6 +132,13 @@ export class AgentRoutineStore extends RoutineStore {
   /** Durable owner-event identity. Event body never becomes routine instructions. */
   createEventRun(routine: Routine, eventKey: string, now = new Date()): RoutineRun {
     if (!/^[a-f0-9]{64}$/.test(eventKey)) throw Error("Hashed source event identity required.");
+    const commandId = `routine-run:event:${routine.agentId}:${routine.id}:${eventKey}`;
+    const creation = this.database.connection
+      .prepare(
+        "SELECT json_extract(payload_json,'$.runId') run_id FROM orchestration_events WHERE command_id=? AND aggregate_type='routine-run' AND event_type='routine.run-created' ORDER BY sequence LIMIT 1",
+      )
+      .get(commandId);
+    if (typeof creation?.run_id === "string") return toRun(this.currentRunRow(creation.run_id));
     const receipt = toRun(this.createRunRow(toOwnedRoutine(routine), null, "manual", now.toISOString(), eventKey));
     return toRun(this.currentRunRow(receipt.id));
   }
