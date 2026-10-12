@@ -109,6 +109,7 @@ interface AcpTurn {
   task: Promise<void>;
   controller: AbortController;
   fallbackUsed: boolean;
+  refreshDeadline?: (toolRunning: boolean) => void;
   pauseDeadline?: () => void;
   resumeDeadline?: () => void;
 }
@@ -166,7 +167,10 @@ export interface AcpProviderOptions {
   servesModel?(modelId: string): boolean;
   validateModel?(modelId: string, signal?: AbortSignal): Promise<void>;
   fallbackModel?: string;
+  /** Inactivity limit, not total turn duration. Meaningful progress renews it. */
   promptDeadlineMs?: number;
+  /** Quiet running tools can legitimately take much longer than model output. */
+  toolDeadlineMs?: number;
   workerHistory?: WorkerHistory;
   /** Drop the model's thought chunks: Dani's free models reason out loud, and it must not reach a bubble. */
   hideThoughtChunks?: boolean;
@@ -911,11 +915,15 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       const wireId = thread.wireId;
       let deadline: ReturnType<typeof setTimeout> | undefined;
       let abortListener: (() => void) | undefined;
-      let remainingMs = this.options.promptDeadlineMs ?? 120_000;
+      const idleMs = this.options.promptDeadlineMs ?? 15 * 60_000;
+      const toolMs = this.options.toolDeadlineMs ?? 2 * 60 * 60_000;
+      let remainingMs = idleMs;
+      let deadlineExpired = false;
       let armedAt = Date.now();
       let waits = 0;
       const stopped = new Promise<never>((_resolve, reject) => {
         const expire = () => {
+          deadlineExpired = true;
           thread.retiredAttempt = true;
           let persistenceFailure = "";
           try {
@@ -931,16 +939,30 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
           void this.#requireConnection()
             .cancel({ sessionId: wireId })
             .catch((error) => this.emit("diagnostic", redactText(String(error))));
-          reject(
-            new Error(
-              "ACP prompt deadline expired. The old attempt was quarantined; cancellation does not prove tool termination. Fallback paused." +
-                persistenceFailure,
-            ),
+          // Cancellation is only a request. Keep the old wire closed, but allow the
+          // provider's explicit cancelled prompt receipt to settle and be persisted.
+          deadline = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  "ACP prompt inactivity deadline expired. The old attempt was quarantined; cancellation does not prove tool termination. Fallback paused." +
+                    persistenceFailure,
+                ),
+              ),
+            Math.min(idleMs, 3_000),
           );
         };
         const arm = () => {
           armedAt = Date.now();
           deadline = setTimeout(expire, remainingMs);
+        };
+        turn.refreshDeadline = (toolRunning) => {
+          if (deadlineExpired || turn.controller.signal.aborted) return;
+          remainingMs = toolRunning ? toolMs : idleMs;
+          if (waits === 0) {
+            if (deadline) clearTimeout(deadline);
+            arm();
+          }
         };
         turn.pauseDeadline = () => {
           if (turn.controller.signal.aborted) return;
@@ -970,12 +992,13 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       } finally {
         if (deadline) clearTimeout(deadline);
         if (abortListener) turn.controller.signal.removeEventListener("abort", abortListener);
+        turn.refreshDeadline = undefined;
         turn.pauseDeadline = undefined;
         turn.resumeDeadline = undefined;
       }
 
       if (
-        turn.controller.signal.aborted &&
+        (turn.controller.signal.aborted || deadlineExpired) &&
         response.stopReason === "cancelled" &&
         thread.activeTurn === turn &&
         !this.#stopping
@@ -985,13 +1008,24 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         thread.retiredAttempt = false;
       }
 
-      if (turn.controller.signal.aborted && thread.retiredAttempt) {
+      if ((turn.controller.signal.aborted || deadlineExpired) && thread.retiredAttempt) {
         this.emit(
           "diagnostic",
           `Provider settled an interrupted prompt with stopReason=${response.stopReason}; cancellation is not confirmed. Session remains quarantined.`,
         );
       }
 
+      if (deadlineExpired) {
+        this.#completeTurn(
+          thread,
+          turn,
+          "failed",
+          thread.retiredAttempt
+            ? "Provider inactivity cancellation was not confirmed. Safe recovery is required."
+            : "Provider stopped after the inactivity deadline. You can send a new request; the old task was not replayed.",
+        );
+        return;
+      }
       if (turn.controller.signal.aborted || thread.activeTurn !== turn || this.#stopping) {
         this.#completeTurn(thread, turn, "interrupted", null);
         return;
@@ -1117,7 +1151,12 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const turn = thread.activeTurn;
     const update = notification.update;
     if (!turn || turn.controller.signal.aborted) return;
+    const runningTool = () =>
+      turn.messages.some(
+        (item) => item.type === "toolCall" && (item.status === "in_progress" || item.status === "pending"),
+      );
     if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
+      if (update.content.text.trim()) turn.refreshDeadline?.(runningTool());
       if (update.content.text) this.#completeThought(thread, turn);
       if (update.content.text.trim()) {
         turn.receivedOutput = true;
@@ -1127,6 +1166,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       return;
     }
     if (update.sessionUpdate === "agent_thought_chunk" && update.content.type === "text") {
+      if (update.content.text.trim()) turn.refreshDeadline?.(runningTool());
       if (update.content.text) turn.receivedOutput = true;
       if (this.options.hideThoughtChunks) return;
       this.#completeMessage(thread, turn, "commentary");
@@ -1175,8 +1215,10 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         result: mergeToolData(prior?.result, update.rawOutput),
         content: update.content ?? prior?.content,
       } satisfies ThreadItem;
+      const changed = !prior || JSON.stringify(prior) !== JSON.stringify(committed);
       if (prior) Object.assign(prior, committed);
       else turn.messages.push(committed);
+      if (changed) turn.refreshDeadline?.(runningTool());
       this.options.workerHistory?.append(thread.id, {
         kind: "item",
         turnId: turn.id,
@@ -1196,6 +1238,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       return;
     }
     if (update.sessionUpdate === "plan") {
+      if (update.entries.length) turn.refreshDeadline?.(runningTool());
       const text = update.entries
         .map((entry) => `- [${entry.status === "completed" ? "x" : " "}] ${entry.content}`)
         .join("\n");

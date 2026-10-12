@@ -5,6 +5,17 @@ All notable changes to Dani-Dex will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-10-12
+
+### Fixed
+
+- Keep long ACP tasks running while the provider makes progress. Replace the two-minute total-turn
+  cutoff with a fifteen-minute inactivity watchdog and a two-hour quiet running-tool watchdog.
+- Keep approval waits outside the watchdog. Stop stalled attempts without replaying their work;
+  clear a cancellation quarantine only after the provider confirms cancellation and that receipt is saved.
+- Existing attempts with unconfirmed tool termination remain blocked for safe recovery. This update
+  does not erase conversation history or infer that a cancelled tool stopped.
+
 ## [0.18.0] - 2026-10-12
 
 ### Fixed

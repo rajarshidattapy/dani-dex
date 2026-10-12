@@ -141,6 +141,13 @@ function handle(message) {
   if (message.method === "session/prompt") {
     if(process.env.DANI_DEX_FAKE_ACP_APPROVAL === "1") {pendingPrompt=message;write({jsonrpc:"2.0",id:"approval-from-provider",method:"session/request_permission",params:{sessionId:message.params.sessionId,toolCall:{toolCallId:"write-approval",kind:"edit",title:"temp-write",status:"pending"},options:[{optionId:"once",name:"Allow once",kind:"allow_once"},{optionId:"reject",name:"Reject",kind:"reject_once"}]}});return;}
 
+    if (process.env.DANI_DEX_FAKE_ACP_LONG_ACTIVE === "1") {
+      let count=0; const timer=setInterval(()=>{ count++; write({jsonrpc:"2.0",method:"session/update",params:{sessionId:message.params.sessionId,update:{sessionUpdate:"agent_thought_chunk",content:{type:"text",text:"step "+count}}}}); if(count===6){clearInterval(timer);write({jsonrpc:"2.0",method:"session/update",params:{sessionId:message.params.sessionId,update:{sessionUpdate:"agent_message_chunk",content:{type:"text",text:"Long task complete"}}}});write({jsonrpc:"2.0",id:message.id,result:{stopReason:"end_turn"}});}},30);return;
+    }
+    if (process.env.DANI_DEX_FAKE_ACP_LONG_TOOL === "1") {
+      write({jsonrpc:"2.0",method:"session/update",params:{sessionId:message.params.sessionId,update:{sessionUpdate:"tool_call",toolCallId:"long-tool",title:"local build",kind:"execute",status:"in_progress"}}});
+      setTimeout(()=>{write({jsonrpc:"2.0",method:"session/update",params:{sessionId:message.params.sessionId,update:{sessionUpdate:"tool_call_update",toolCallId:"long-tool",status:"completed",rawOutput:"Build complete"}}});write({jsonrpc:"2.0",id:message.id,result:{stopReason:"end_turn"}});},180);return;
+    }
     if (process.env.DANI_DEX_FAKE_ACP_DELAY_SUCCESS === "1") {
       setTimeout(()=>{write({jsonrpc:"2.0",method:"session/update",params:{sessionId:message.params.sessionId,update:{sessionUpdate:"agent_message_chunk",content:{type:"text",text:"LATE SUCCESS"}}}});write({jsonrpc:"2.0",id:message.id,result:{stopReason:"end_turn"}});observedLate();},150);return;
     }
@@ -293,6 +300,7 @@ function startOpencode(
     validateModel?: (modelId: string, signal?: AbortSignal) => Promise<void>;
     fallbackModel?: string;
     promptDeadlineMs?: number;
+    toolDeadlineMs?: number;
     workerHistory?: import("./agent/worker-history").WorkerHistory;
     /** Read at every session, the same way the real source is. */
     mcpServers?: () => McpServerConfig[];
@@ -325,6 +333,7 @@ function startOpencode(
         fallbackModel: options.fallbackModel,
         workerHistory: options.workerHistory,
         promptDeadlineMs: options.promptDeadlineMs,
+        toolDeadlineMs: options.toolDeadlineMs,
       })
     : options.profile
       ? (driver.createProfileClient?.(cli, timeoutMs, context) ?? driver.createClient(cli, timeoutMs, context))
@@ -1617,4 +1626,110 @@ it("correlates missing permission input only with exact current-turn call ID and
     expect(correlatedChannelResult(call, [{ ...item, arguments: arguments_ }])).toBeNull();
   expect(correlatedChannelResult(call, [])).toBeNull();
   expect(correlatedChannelResult({ ...call, rawInput: "malformed" }, [item])).toBeNull();
+});
+
+it.each(["LONG_ACTIVE", "LONG_TOOL"])("lets %s outlive the model idle interval without retirement", async (mode) => {
+  const fake = await createFakeOpencodeAgent();
+  vi.stubEnv(`DANI_DEX_FAKE_ACP_${mode}`, "1");
+  const entries: WorkerHistoryEntry[] = [];
+  const client = startOpencode(fake.cli, () => null, fake.envLog, {
+    promptDeadlineMs: 100,
+    toolDeadlineMs: 500,
+    workerHistory: { read: () => entries, append: (_id, e) => entries.push(e) },
+  });
+  const events: AppServerNotification[] = [];
+  client.on("notification", (n) => events.push(n));
+  const opened = await client.request("thread/start", { cwd: tmpdir() }, decodeRecordResponse);
+  await client.request(
+    "turn/start",
+    { threadId: requireThreadId(opened), input: [{ type: "text", text: "Synthetic long task" }] },
+    decodeRecordResponse,
+  );
+  await vi.waitFor(() => expect(events.some((e) => e.method === "turn/completed")).toBe(true));
+  expect(completedStatus(events)).toBe("completed");
+  expect(entries.some((e) => e.kind === "retirement")).toBe(false);
+});
+it("resolves an inactivity retirement only after the cancelled receipt is persisted, with no replay", async () => {
+  const fake = await createFakeOpencodeAgent();
+  vi.stubEnv("DANI_DEX_FAKE_ACP_HANG_PRIMARY", "1");
+  vi.stubEnv("DANI_DEX_FAKE_ACP_CONFIRM_CANCEL", "1");
+  vi.stubEnv("DANI_DEX_FAKE_ACP_PROMPT_LOG", fake.promptLog);
+  const entries: WorkerHistoryEntry[] = [];
+  const client = startOpencode(fake.cli, () => null, fake.envLog, {
+    promptDeadlineMs: 100,
+    workerHistory: { read: () => entries, append: (_id, e) => entries.push(e) },
+  });
+  const events: AppServerNotification[] = [];
+  client.on("notification", (e) => events.push(e));
+  const opened = await client.request("thread/start", { cwd: tmpdir() }, decodeRecordResponse);
+  const threadId = requireThreadId(opened);
+  await client.request(
+    "turn/start",
+    { threadId, clientUserMessageId: "idle", input: [{ type: "text", text: "Synthetic hang" }] },
+    decodeRecordResponse,
+  );
+  await vi.waitFor(() => expect(events.some((e) => e.method === "turn/completed")).toBe(true));
+  expect(entries.some((e) => e.kind === "cancellation-confirmed" && e.turnId === "idle")).toBe(true);
+  await client.request(
+    "turn/start",
+    { threadId, clientUserMessageId: "new", input: [{ type: "text", text: "New request, not replay" }] },
+    decodeRecordResponse,
+  );
+  await vi.waitFor(() => expect(events.filter((e) => e.method === "turn/completed")).toHaveLength(2));
+  expect(await fake.readPrompts()).toHaveLength(2);
+});
+
+it("a quiet tool exceeding its own watchdog remains quarantined after ambiguous completion", async () => {
+  const fake = await createFakeOpencodeAgent();
+  vi.stubEnv("DANI_DEX_FAKE_ACP_LONG_TOOL", "1");
+  const entries: WorkerHistoryEntry[] = [];
+  const client = startOpencode(fake.cli, () => null, fake.envLog, {
+    promptDeadlineMs: 100,
+    toolDeadlineMs: 100,
+    workerHistory: { read: () => entries, append: (_id, e) => entries.push(e) },
+  });
+  const events: AppServerNotification[] = [];
+  client.on("notification", (e) => events.push(e));
+  const opened = await client.request("thread/start", { cwd: tmpdir() }, decodeRecordResponse);
+  const threadId = requireThreadId(opened);
+  await client.request(
+    "turn/start",
+    { threadId, input: [{ type: "text", text: "Synthetic slow tool" }] },
+    decodeRecordResponse,
+  );
+  await vi.waitFor(() => expect(events.some((e) => e.method === "turn/completed")).toBe(true));
+  expect(entries.some((e) => e.kind === "retirement")).toBe(true);
+  expect(entries.some((e) => e.kind === "cancellation-confirmed")).toBe(false);
+  await expect(
+    client.request("turn/start", { threadId, input: [{ type: "text", text: "No replay" }] }, decodeRecordResponse),
+  ).rejects.toThrow("Safe recovery");
+});
+it("deadline cancellation receipt storage failure keeps the next request blocked", async () => {
+  const fake = await createFakeOpencodeAgent();
+  vi.stubEnv("DANI_DEX_FAKE_ACP_HANG_PRIMARY", "1");
+  vi.stubEnv("DANI_DEX_FAKE_ACP_CONFIRM_CANCEL", "1");
+  const entries: WorkerHistoryEntry[] = [];
+  const client = startOpencode(fake.cli, () => null, fake.envLog, {
+    promptDeadlineMs: 100,
+    workerHistory: {
+      read: () => entries,
+      append: (_id, e) => {
+        if (e.kind === "cancellation-confirmed") throw Error("disk full");
+        entries.push(e);
+      },
+    },
+  });
+  const events: AppServerNotification[] = [];
+  client.on("notification", (e) => events.push(e));
+  const opened = await client.request("thread/start", { cwd: tmpdir() }, decodeRecordResponse);
+  const threadId = requireThreadId(opened);
+  await client.request(
+    "turn/start",
+    { threadId, input: [{ type: "text", text: "Synthetic hang" }] },
+    decodeRecordResponse,
+  );
+  await vi.waitFor(() => expect(events.some((e) => e.method === "turn/completed")).toBe(true));
+  await expect(
+    client.request("turn/start", { threadId, input: [{ type: "text", text: "No replay" }] }, decodeRecordResponse),
+  ).rejects.toThrow("Safe recovery");
 });
