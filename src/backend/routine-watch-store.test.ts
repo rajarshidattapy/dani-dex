@@ -233,3 +233,71 @@ it("recovers lost watch acknowledgement after committed delivery and revoke with
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it("rechecks the exact paired chat before matching and before committing matched work", async () => {
+  const root = await mkdtemp(join(tmpdir(), "watch-unpaired-"));
+  const db = new DaniDexDatabase(root);
+  await db.initialize();
+  try {
+    const routines = new AgentRoutineStore(db),
+      gateway = new GatewayStore(db),
+      watches = new RoutineWatchStore(db);
+    const routine = routines.create({
+      agentId: "chief",
+      name: "Review",
+      instruction: "Owner instruction",
+      active: true,
+      timezone: "UTC",
+      schedule: { kind: "daily", time: "09:00" },
+    });
+    gateway.register({
+      gatewayId: "g",
+      ownerId: "owner",
+      agentId: "chief",
+      platform: "telegram",
+      accountId: "bot",
+      credentialHandle: "vault:test",
+    });
+    gateway.pair("g", "owner", "chat", "sender");
+    gateway.enable("g", "owner");
+    const input = {
+      ownerId: "owner",
+      agentId: "chief",
+      routineId: routine.id,
+      gatewayId: "g",
+      conversationId: "chat",
+      senderId: "sender",
+      deadline: Date.now() + 60000,
+    };
+    const beforeMatch = watches.create(input),
+      afterMatch = watches.create(input);
+    gateway.ingest("g", {
+      eventId: "new",
+      conversationId: "chat",
+      senderId: "sender",
+      body: "Untrusted",
+      nextOffset: 1,
+    });
+    gateway.approveInbound("g", "owner", "new", "Untrusted", "chat", "sender");
+    watches.match(afterMatch, "new");
+    db.connection
+      .prepare("DELETE FROM projection_gateway_chats WHERE gateway_id=? AND conversation_id=? AND sender_id=?")
+      .run("g", "chat", "sender");
+    // Another paired chat must not stand in for the watched destination.
+    gateway.pair("g", "owner", "other-chat", "sender");
+    expect(() => watches.match(beforeMatch, "new")).toThrow("authorized");
+    expect(() => watches.assertMatched(afterMatch)).toThrow("authorized");
+    expect(
+      db.connection.prepare("SELECT state,event_id FROM projection_routine_watches WHERE watch_id=?").get(beforeMatch),
+    ).toMatchObject({ state: "waiting", event_id: null });
+    watches.reconcileSources();
+    for (const id of [beforeMatch, afterMatch])
+      expect(
+        db.connection.prepare("SELECT state,run_id FROM projection_routine_watches WHERE watch_id=?").get(id),
+      ).toMatchObject({ state: "blocked", run_id: null });
+    expect(routines.listRuns("chief", routine.id, 10)).toHaveLength(0);
+  } finally {
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

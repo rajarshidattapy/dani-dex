@@ -78,7 +78,7 @@ export class RoutineWatchStore implements RoutineDueSource {
     if (
       !this.database.connection
         .prepare(
-          `SELECT 1 FROM projection_routine_watches w JOIN projection_gateways g USING(gateway_id) JOIN projection_gateway_inbox i ON i.gateway_id=w.gateway_id AND i.event_id=w.event_id JOIN projection_agent_routines r ON r.routine_id=w.routine_id AND r.agent_id=w.agent_id WHERE w.watch_id=? AND w.state='matched' AND w.deadline>? AND g.owner_id=w.owner_id AND g.agent_id=w.agent_id AND g.enabled=1 AND g.generation=w.generation AND i.rowid>w.after_rowid AND i.generation=w.generation AND i.conversation_id=w.conversation_id AND i.sender_id=w.sender_id AND i.state IN ('approved','delivered') AND r.active=1`,
+          `SELECT 1 FROM projection_routine_watches w JOIN projection_gateways g USING(gateway_id) JOIN projection_gateway_inbox i ON i.gateway_id=w.gateway_id AND i.event_id=w.event_id JOIN projection_agent_routines r ON r.routine_id=w.routine_id AND r.agent_id=w.agent_id WHERE w.watch_id=? AND w.state='matched' AND w.deadline>? AND g.owner_id=w.owner_id AND g.agent_id=w.agent_id AND g.enabled=1 AND g.generation=w.generation AND i.rowid>w.after_rowid AND i.generation=w.generation AND i.conversation_id=w.conversation_id AND i.sender_id=w.sender_id AND i.state IN ('approved','delivered') AND EXISTS(SELECT 1 FROM projection_gateway_chats c WHERE c.gateway_id=w.gateway_id AND c.conversation_id=w.conversation_id AND c.sender_id=w.sender_id) AND r.active=1`,
         )
         .get(watchId, Date.now())
     )
