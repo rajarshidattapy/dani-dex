@@ -1,7 +1,7 @@
-# Executable digests verified against published Dani-Free-proxy release v0.1.0-dani-dex.1,
-# tag commit 29cbea71d434fdd10265e0cb2de9201e74f1eeb4. SHA256SUMS digest is locked separately.
-ed6184a8c57cd2aad3cb7ad6db468ca1a022f0a0f813a7926b9bbd75f8c4b636  dani-free-darwin-arm64
-4639fded4e3489e2d8b9e4bed61156971f3a05aa17f8efa6caf5baf80e536583  dani-free-darwin-x64
-92d4cacb3d1b5d106879a45de4340acdc7cc4656b59a1e54bfcb5d7c162c685f  dani-free-linux-arm64
-00c873281d7aea29793c36f6377516e5d77005c95ab01db45b69d62b11cf3c66  dani-free-linux-x64
-53924a28b4421aa851eaac145c1ae836dc6c89dbb86a31f626e9a63e6489e9d2  dani-free-windows-x64.exe
+# Exact CI artifact from Dani-Free-proxy commit 200ebda8ee2acf7dbf0cc3a9c8a2c7545a063d5e.
+# Run, artifact and ZIP digest are locked in dani-free-proxy-artifact.json.
+12347b8acc2b690e67541641fee1ee7d1ec91d702e34f5da64cbc2f922adcd9f  dani-free-darwin-arm64
+d12ea4d5d0f66ec716fc51d6989398796411b97868fe17a235811a5cc0e0bbd6  dani-free-darwin-x64
+0780ae5710a88c46ccab8bac5d33304eea04b3a154a6124cd4520bf78928e73b  dani-free-linux-arm64
+a82f98348c4c38b98b9b13b104545d882b3dd489e2026218e9bf562730ee2239  dani-free-linux-x64
+ab37b6ecea1e418f5c8784afe6492ce9e588f3188d72cc64d055929638704856  dani-free-windows-x64.exe

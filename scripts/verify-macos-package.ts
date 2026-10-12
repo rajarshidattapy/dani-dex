@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { isDynamicRecord } from "@dani-dex/contracts/runtime-values";
 import { createDaniDexLogger } from "@dani-dex/logging";
 import { FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
+import { verifyPackagedFootprint } from "./packaged-footprint";
 
 const logger = createDaniDexLogger("verify-macos-package");
 
@@ -28,6 +29,7 @@ const appPath = resolve(process.argv[2] ?? "dist/mac-arm64/Dani-Dex.app");
 const contentsPath = resolve(appPath, "Contents");
 const executablePath = resolve(contentsPath, "MacOS/Dani-Dex");
 const resourcesPath = resolve(contentsPath, "Resources");
+await verifyPackagedFootprint(resolve(resourcesPath, "app.asar"));
 const packagedIconPath = resolve(resourcesPath, "icon.icns");
 const sourceIconPath = resolve("build/icon-production.icns");
 const plistPath = resolve(contentsPath, "Info.plist");

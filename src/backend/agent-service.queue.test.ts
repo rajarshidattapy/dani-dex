@@ -53,7 +53,7 @@ describe.sequential("AgentService: queue", () => {
     );
     expect(started.client.requests).toHaveLength(before);
   });
-  it("keeps the selected skill marker when a conversation read races skill discovery", async () => {
+  it("keeps the suggested skill marker when a conversation read races skill discovery", async () => {
     const started = await startService(root, {
       provider: "codex",
       installedSkills: async () => {
@@ -81,17 +81,17 @@ describe.sequential("AgentService: queue", () => {
     const snapshots = events.filter((event) => event.type === "conversation").map((event) => event.snapshot);
     expect(
       snapshots.some((snapshot) =>
-        snapshot.messages.some((message) => message.itemType?.startsWith("skill-event:selected:")),
+        snapshot.messages.some((message) => message.itemType?.startsWith("skill-event:suggested:")),
       ),
     ).toBe(true);
     expect(
       (await service.readConversation("chief")).messages.some((message) =>
-        message.itemType?.startsWith("skill-event:selected:"),
+        message.itemType?.startsWith("skill-event:suggested:"),
       ),
     ).toBe(true);
     expect(
       (await service.readConversationPageFor("chief", "test-reader")).messages.some((message) =>
-        message.itemType?.startsWith("skill-event:selected:"),
+        message.itemType?.startsWith("skill-event:suggested:"),
       ),
     ).toBe(true);
   });

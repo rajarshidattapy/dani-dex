@@ -176,6 +176,13 @@ describe("local skill library", () => {
     expect(await readFile(join(agents[1].workspacePath, ".agents/skills/speckit-analyze/SKILL.md"), "utf8")).toBe(
       content,
     );
+    const disabled = await service.setEnabled({ agentId: "reader", skillId: skill.id, enabled: false });
+    expect(disabled).toMatchObject({ skillId: skill.id, origin: "managed", enabled: false });
+    expect(await service.listInstalled("reader")).toContainEqual(
+      expect.objectContaining({ skillId: skill.id, enabled: false }),
+    );
+    const enabled = await service.setEnabled({ agentId: "reader", skillId: skill.id, enabled: true });
+    expect(enabled).toMatchObject({ skillId: skill.id, enabled: true });
     expect(network).not.toHaveBeenCalled();
   });
 

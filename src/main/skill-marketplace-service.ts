@@ -152,7 +152,9 @@ export class SkillMarketplaceService {
       );
     }
     for (const skill of await listManagedSkillsForChat(agent)) {
-      if (!installed.some((item) => item.slug === skill.slug)) installed.push(skill);
+      const bundledId = await this.localLibrary?.bundledIdForSlug(skill.slug);
+      const listed = bundledId ? { ...skill, skillId: bundledId } : skill;
+      if (!installed.some((item) => item.slug === skill.slug)) installed.push(listed);
     }
     return installed.sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -292,7 +294,8 @@ export class SkillMarketplaceService {
     if (await this.localLibrary?.isBundled(detail.id)) {
       const managed = (await listManagedSkillsForChat(agent)).find((skill) => skill.slug === detail.slug);
       if (managed) {
-        const result = managed.enabled === false ? await setManagedSkillEnabled(agent, managed.slug, true) : managed;
+        const enabled = managed.enabled === false ? await setManagedSkillEnabled(agent, managed.slug, true) : managed;
+        const result = { ...enabled, skillId: detail.id };
         await this.refreshAgentRuntime(agent.id);
         return result;
       }
@@ -381,9 +384,10 @@ export class SkillMarketplaceService {
     const lock = await readLock(agent.workspacePath);
     const entry = lock.skills[input.skillId];
     if (!entry) {
-      const result = await setManagedSkillEnabled(agent, input.skillId, input.enabled);
+      const bundled = input.skillId.startsWith("local-skill-") ? await this.localLibrary?.get(input.skillId) : null;
+      const result = await setManagedSkillEnabled(agent, bundled?.slug ?? input.skillId, input.enabled);
       await this.refreshAgentRuntime(input.agentId);
-      return result;
+      return { ...result, skillId: input.skillId };
     }
     await assertSkillPaths(agent.workspacePath, entry.slug);
     const currentlyEnabled = entry.enabled !== false;

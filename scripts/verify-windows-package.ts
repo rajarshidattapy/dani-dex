@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { isDynamicRecord, isString } from "@dani-dex/contracts/runtime-values";
 import { createDaniDexLogger, toLogValue } from "@dani-dex/logging";
 import { FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
+import { verifyPackagedFootprint } from "./packaged-footprint";
 
 const logger = createDaniDexLogger("verify-windows-package");
 
@@ -21,6 +22,7 @@ const appPathArgument = process.argv.slice(2).find((argument) => !argument.start
 const appPath = resolve(appPathArgument ?? "dist/win-unpacked");
 const executablePath = resolve(appPath, "Dani-Dex.exe");
 const resourcesPath = resolve(appPath, "resources");
+await verifyPackagedFootprint(resolve(resourcesPath, "app.asar"));
 const whisperExecutablePath = resolve(resourcesPath, "whisper/bin/whisper-cli.exe");
 const whisperModelPath = resolve(resourcesPath, "whisper/model/ggml-medium-q5_0.bin");
 

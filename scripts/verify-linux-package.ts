@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { isDynamicRecord, isNumber, isString } from "@dani-dex/contracts/runtime-values";
 import { createDaniDexLogger, toLogValue } from "@dani-dex/logging";
 import { FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
+import { verifyPackagedFootprint } from "./packaged-footprint";
 
 const logger = createDaniDexLogger("verify-linux-package");
 
@@ -23,6 +24,7 @@ const appPath = resolve(appPathArgument ?? "dist/linux-unpacked");
 const executablePath = resolve(appPath, "dani-dex");
 const resourcesPath = resolve(appPath, "resources");
 const asarPath = resolve(resourcesPath, "app.asar");
+await verifyPackagedFootprint(asarPath);
 
 await Promise.all([
   access(executablePath),

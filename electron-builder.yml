@@ -29,6 +29,30 @@ files:
   - "!node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**/*"
   - "!node_modules/@anthropic-ai/claude-agent-sdk-linux-*/**/*"
   - "!node_modules/@anthropic-ai/claude-agent-sdk-win32-*/**/*"
+  # Renderer imports are already compiled into out/renderer. Never ship a second
+  # raw copy of their libraries in the main-process dependency tree.
+  - "!node_modules/lucide-solid/**/*"
+  - "!node_modules/three/**/*"
+  - "!node_modules/@types/three/**/*"
+  - "!node_modules/@dimforge/**/*"
+  - "!node_modules/rrweb/**/*"
+  - "!node_modules/rrdom/**/*"
+  - "!node_modules/rrweb-snapshot/**/*"
+  - "!node_modules/@fontsource-variable/**/*"
+  - "!node_modules/solid-recharts/**/*"
+  - "!node_modules/@solidjs/**/*"
+  - "!node_modules/@kobalte/**/*"
+  - "!node_modules/@norbert_bodziony/**/*"
+  - "!node_modules/@paper-design/**/*"
+  - "!node_modules/@speed-highlight/**/*"
+  - "!node_modules/@tanstack/virtual-core/**/*"
+  - "!node_modules/class-variance-authority/**/*"
+  - "!node_modules/solid-sonner/**/*"
+  - "!node_modules/solid-js/**/*"
+  - "!node_modules/**/*.map"
+  - "!node_modules/**/*.test.*"
+  - "!node_modules/**/*.d.ts"
+
 asarUnpack:
   # The database host is loaded by path as a separate process, not required into the main bundle.
   - out/main/agent-database-host.js

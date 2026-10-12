@@ -5,6 +5,15 @@ All notable changes to Dani-Dex will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.18.3] - 2026-10-13
+
+- Do not start the Dani Free inference engine for discovery, models, status or refresh. The pinned proxy starts it on real requests and releases it after the idle window.
+- Remove raw renderer libraries and development maps/tests/type declarations from the desktop archive without removing built renderer assets, runtime dependencies or licenses.
+- Enforce a lean archive budget and duplicate-payload checks in all native package verifiers.
+- Preserve bundled skill catalog IDs across installed listing and disable/re-enable controls, and align queue tests with the intentional suggestion marker.
+- Local Linux idle and installer measurements improved; native installed-app and updater verification remain release gates, not assumed results.
+
+
 ## [0.18.2] - 2026-10-12
 
 ### Fixed
