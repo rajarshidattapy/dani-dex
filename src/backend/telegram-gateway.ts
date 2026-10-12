@@ -1,8 +1,8 @@
+import { createHash } from "node:crypto";
+import type { GatewayInboxItem, GatewayStore } from "./gateway-store";
 import { telegramMediaManifest } from "./telegram-media";
 import type { TelegramMediaStore } from "./telegram-media-store";
-import { createHash } from "node:crypto";
-import { GatewayStore, type GatewayInboxItem } from "./gateway-store";
-import { TelegramTransport, type TelegramUpdate } from "./telegram-transport";
+import type { TelegramTransport, TelegramUpdate } from "./telegram-transport";
 export interface TelegramDelivery {
   /** Must use the existing mailbox's durable idempotency key; never reinterpret external text as owner permission. */
   deliver(item: GatewayInboxItem, idempotencyKey: string): Promise<string>;
@@ -57,7 +57,8 @@ export class TelegramGateway {
   private accept(update: TelegramUpdate): void {
     const m = update.message ?? update.edited_message;
     const unsupported = Boolean(update.edited_message || m?.voice || m?.document);
-    const manifest = this.media ? telegramMediaManifest(update) : null;
+    const media = this.media;
+    const manifest = media ? telegramMediaManifest(update) : null;
     // Unsupported updates are explicitly represented, not silently presented as a complete media adapter.
     this.store.ingest(
       this.gatewayId,
@@ -70,7 +71,16 @@ export class TelegramGateway {
           ? "[Unsupported Telegram edit or media: owner review required]"
           : (m?.text ?? m?.caption ?? "[Unsupported Telegram update]"),
       },
-      manifest ? (db) => this.media!.recordWithinInbox(db, this.gatewayId, manifest) : undefined,
+      manifest && media
+        ? (db) => media.recordWithinInbox(db, this.gatewayId, manifest)
+        : unsupported
+          ? (db) =>
+              db
+                .prepare(
+                  "UPDATE projection_gateway_inbox SET state='rejected' WHERE gateway_id=? AND event_id=? AND state='pending'",
+                )
+                .run(this.gatewayId, String(update.update_id))
+          : undefined,
     );
   }
   async sendReviewedReply(replyId: string, signal?: AbortSignal): Promise<void> {

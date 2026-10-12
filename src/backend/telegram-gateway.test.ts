@@ -6,6 +6,7 @@ import { DaniDexDatabase } from "./dani-dex-database";
 import { GatewayStore } from "./gateway-store";
 import { TelegramGateway } from "./telegram-gateway";
 import { TelegramTransport } from "./telegram-transport";
+
 it("receives once, requires review, reconciles mailbox crash and returns only approved replies", async () => {
   const root = await mkdtemp(join(tmpdir(), "tg-gateway-"));
   const db = new DaniDexDatabase(root);
@@ -43,7 +44,9 @@ it("receives once, requires review, reconciles mailbox crash and returns only ap
         fail = false;
         throw new Error("crash after mailbox committed");
       }
-      return receipts.get(key) as string;
+      const receipt = receipts.get(key);
+      if (!receipt) throw Error("Missing receipt");
+      return receipt;
     });
     const gateway = new TelegramGateway("g", store, new TelegramTransport(() => "123:FAKE", request), { deliver });
     await gateway.poll();
@@ -214,6 +217,52 @@ it("rolls back inbox and offset if atomic metadata persistence fails", async () 
     expect(s.ingest("g", { eventId: "4", conversationId: "12", senderId: "7", body: "media", nextOffset: 5 })).toBe(
       "accepted",
     );
+  } finally {
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("rejects unhandled media and edits atomically instead of allowing placeholder text approval", async () => {
+  const root = await mkdtemp(join(tmpdir(), "tg-unsupported-"));
+  const db = new DaniDexDatabase(root);
+  await db.initialize();
+  try {
+    const store = new GatewayStore(db);
+    store.register({
+      gatewayId: "g",
+      ownerId: "o",
+      agentId: "chief",
+      platform: "telegram",
+      accountId: "bot",
+      credentialHandle: "vault:t",
+    });
+    store.pair("g", "o", "12", "7");
+    store.enable("g", "o");
+    const message = { message_id: 1, chat: { id: 12 }, from: { id: 7 } };
+    const request = vi.fn(async () =>
+      Response.json({
+        ok: true,
+        result: [
+          { update_id: 4, message: { ...message, document: { file_id: "missing-unique-id" } } },
+          { update_id: 5, edited_message: { ...message, text: "edited text" } },
+        ],
+      }),
+    );
+    const deliver = vi.fn();
+    const gateway = new TelegramGateway("g", store, new TelegramTransport(() => "123:FAKE", request), { deliver });
+    await gateway.poll();
+    expect(store.pending("g")).toEqual([]);
+    expect(store.approved("g")).toEqual([]);
+    expect(store.offset("g")).toBe(6);
+    for (const eventId of ["4", "5"]) {
+      const row = db.connection
+        .prepare("SELECT state,body FROM projection_gateway_inbox WHERE event_id=?")
+        .get(eventId);
+      expect(row?.state).toBe("rejected");
+      expect(() => store.approveInbound("g", "o", eventId, String(row?.body), "12", "7")).toThrow("review");
+    }
+    expect(deliver).not.toHaveBeenCalled();
   } finally {
     db.close();
     await rm(root, { recursive: true, force: true });
