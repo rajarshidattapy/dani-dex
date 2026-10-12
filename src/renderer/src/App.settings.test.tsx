@@ -26,6 +26,7 @@ describe("Dani-Dex connected desktop shell", () => {
     await screen.findByRole("heading", { name: "Chief" });
     await waitFor(() => expect(window.danidex.agent.listInstalledSkills).toHaveBeenCalled());
     await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Agent settings" }));
     await fireEvent.click(await screen.findByRole("button", { name: /^Skills/ }));
     await fireEvent.click((await screen.findAllByRole("button", { name: "Add from marketplace" }))[0]);
     expect(await screen.findByRole("heading", { name: "Marketplace" })).toBeInTheDocument();
@@ -198,6 +199,7 @@ describe("Dani-Dex connected desktop shell", () => {
     await screen.findByRole("heading", { name: "Chief" });
     await waitFor(() => expect(window.danidex.agent.listInstalledSkills).toHaveBeenCalled());
     await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Agent settings" }));
     await screen.findByRole("textbox", { name: "Agent name" });
     vi.mocked(window.danidex.agent.listInstalledSkills).mockResolvedValue([
       {
@@ -912,6 +914,7 @@ describe("Dani-Dex connected desktop shell", () => {
     );
 
     await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Agent settings" }));
     const name = await screen.findByRole("textbox", { name: "Agent name" });
     await fireEvent.input(name, { target: { value: "Coordinator" } });
     await fireEvent.blur(name);
@@ -941,6 +944,7 @@ describe("Dani-Dex connected desktop shell", () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
     await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Agent settings" }));
     const settings = await screen.findByRole("complementary", { name: "Agent settings" });
     await fireEvent.click(within(settings).getByRole("button", { name: "Edit agent avatar" }));
     const editor = within(settings).getByRole("dialog", { name: "Avatar editor" });
@@ -958,6 +962,7 @@ describe("Dani-Dex connected desktop shell", () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
     await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Agent settings" }));
     const settings = await screen.findByRole("complementary", { name: "Agent settings" });
     await fireEvent.click(within(settings).getByRole("button", { name: "Agent model: GPT-5.6 Luna" }));
     const picker = within(settings).getByRole("dialog", { name: "Choose agent model" });
@@ -982,6 +987,7 @@ describe("Dani-Dex connected desktop shell", () => {
     render(() => <App />);
     await screen.findByRole("heading", { name: "Chief" });
     await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Agent settings" }));
     const name = await screen.findByRole("textbox", { name: "Agent name" });
     name.focus();
     let draft = "";

@@ -121,6 +121,7 @@ describe("Dani-Dex connected desktop shell", () => {
     composer.textContent = "Keep this conversation draft";
     await fireEvent.input(composer);
     await fireEvent.click(screen.getByRole("button", { name: "View agent settings" }));
+    await fireEvent.click(await screen.findByRole("button", { name: "Agent settings" }));
     const settings = await screen.findByRole("complementary", { name: "Agent settings" });
     const name = within(settings).getByRole("textbox", { name: "Agent name" });
     await fireEvent.input(name, { target: { value: "Draft agent name" } });
