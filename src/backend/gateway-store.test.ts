@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { DaniDexDatabase } from "./dani-dex-database";
 import { GatewayStore } from "./gateway-store";
+
 const roots: string[] = [];
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((r) => rm(r, { recursive: true, force: true })));
@@ -115,6 +116,33 @@ it("WhatsApp cannot activate and credentials must be handles", async () => {
   db.close();
 });
 
-it("rejection preserves offset and cannot dispatch or later approve the request",async()=>{
- const {db,store}=await setup();store.ingest("tg",event);store.rejectInbound("tg","owner","17");expect(store.pending("tg")).toEqual([]);expect(store.approved("tg")).toEqual([]);expect(store.offset("tg")).toBe(18);expect(()=>store.approveInbound("tg","owner","17","Hello","chat1","person1")).toThrow();db.close();
+it("rejection preserves offset and cannot dispatch or later approve the request", async () => {
+  const { db, store } = await setup();
+  store.ingest("tg", event);
+  store.rejectInbound("tg", "owner", "17");
+  expect(store.pending("tg")).toEqual([]);
+  expect(store.approved("tg")).toEqual([]);
+  expect(store.offset("tg")).toBe(18);
+  expect(() => store.approveInbound("tg", "owner", "17", "Hello", "chat1", "person1")).toThrow();
+  db.close();
+});
+
+it("requires the exact current pair at inbound review and dispatch validation", async () => {
+  const { db, store } = await setup();
+  try {
+    store.ingest("tg", event);
+    store.ingest("tg", { ...event, eventId: "19", nextOffset: 20 });
+    store.approveInbound("tg", "owner", "17", "Hello", "chat1", "person1");
+    db.connection
+      .prepare("DELETE FROM projection_gateway_chats WHERE gateway_id=? AND conversation_id=? AND sender_id=?")
+      .run("tg", "chat1", "person1");
+    store.pair("tg", "owner", "other-chat", "person1");
+    expect(() => store.approveInbound("tg", "owner", "19", "Hello", "chat1", "person1")).toThrow("review");
+    expect(() => store.assertApproved("tg", "17", 1)).toThrow("revoked");
+    expect(db.connection.prepare("SELECT state FROM projection_gateway_inbox WHERE event_id='19'").get()?.state).toBe(
+      "pending",
+    );
+  } finally {
+    db.close();
+  }
 });

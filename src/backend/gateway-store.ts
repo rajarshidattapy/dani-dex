@@ -177,7 +177,7 @@ export class GatewayStore {
     this.change(gatewayId, "inbound-approved", { eventId, conversationId, senderId }, (db) => {
       const result = db
         .prepare(
-          `UPDATE projection_gateway_inbox SET state='approved' WHERE gateway_id=? AND event_id=? AND body=? AND conversation_id=? AND sender_id=? AND state='pending' AND EXISTS(SELECT 1 FROM projection_gateways g WHERE g.gateway_id=? AND g.enabled=1 AND g.generation=projection_gateway_inbox.generation)`,
+          `UPDATE projection_gateway_inbox SET state='approved' WHERE gateway_id=? AND event_id=? AND body=? AND conversation_id=? AND sender_id=? AND state='pending' AND EXISTS(SELECT 1 FROM projection_gateways g WHERE g.gateway_id=? AND g.enabled=1 AND g.generation=projection_gateway_inbox.generation) AND EXISTS(SELECT 1 FROM projection_gateway_chats c WHERE c.gateway_id=projection_gateway_inbox.gateway_id AND c.conversation_id=projection_gateway_inbox.conversation_id AND c.sender_id=projection_gateway_inbox.sender_id)`,
         )
         .run(gatewayId, eventId, reviewedBody, conversationId, senderId, gatewayId);
       if (!result.changes) throw new Error("Inbound owner review no longer matches.");
@@ -216,7 +216,7 @@ export class GatewayStore {
     if (
       !this.database.connection
         .prepare(
-          `SELECT 1 FROM projection_gateway_inbox i JOIN projection_gateways g USING(gateway_id) WHERE i.gateway_id=? AND i.event_id=? AND i.state='approved' AND i.generation=? AND g.generation=i.generation AND g.enabled=1`,
+          `SELECT 1 FROM projection_gateway_inbox i JOIN projection_gateways g USING(gateway_id) WHERE i.gateway_id=? AND i.event_id=? AND i.state='approved' AND i.generation=? AND g.generation=i.generation AND g.enabled=1 AND EXISTS(SELECT 1 FROM projection_gateway_chats c WHERE c.gateway_id=i.gateway_id AND c.conversation_id=i.conversation_id AND c.sender_id=i.sender_id)`,
         )
         .get(gatewayId, eventId, generation)
     )
