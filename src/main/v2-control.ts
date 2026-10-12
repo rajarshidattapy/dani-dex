@@ -50,7 +50,7 @@ export class V2Control {
             claimedPrincipal: { handle: "unavailable", display: "Could not render" },
             text: String(r.text),
             envelope: {},
-            state: "render-error",
+            state: r.effect_state === "uncertain" ? "uncertain" : "render-error",
             deadline: Number(r.deadline),
             envelopeHash: new PeerTrustStore(this.database).reviewHash(String(r.request_id)),
           };
@@ -78,9 +78,12 @@ export class V2Control {
           },
         ],
         (db) => {
-          db.prepare(
-            "UPDATE projection_peer_requests SET state='declined' WHERE request_id=? AND state IN ('message-taker','owner-review','consent-pending') AND request_id NOT IN (SELECT request_id FROM projection_peer_effects WHERE state IN ('executing','uncertain','completed'))",
-          ).run(r.requestId);
+          const result = db
+            .prepare(
+              "UPDATE projection_peer_requests SET state='declined' WHERE request_id=? AND state IN ('message-taker','owner-review','consent-pending') AND request_id NOT IN (SELECT request_id FROM projection_peer_effects WHERE state IN ('executing','uncertain','completed'))",
+            )
+            .run(r.requestId);
+          if (!result.changes) throw Error("Peer review cannot be dismissed.");
           return null;
         },
       );
