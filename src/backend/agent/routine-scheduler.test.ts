@@ -532,10 +532,20 @@ it("prepares one durable owner-event run and checks source again at mailbox comm
   expect(routines.listRuns(agent.id, routine.id, 10)).toHaveLength(2);
   expect(validate.mock.calls.length).toBeGreaterThanOrEqual(4);
   expect(run.instruction).toBe("Owner task only.");
+  const preview = vi.spyOn(store, "updatePreview").mockRejectedValueOnce(Error("postcommit display failure"));
+  await expect(scheduler.receiveWatchEvent(agent.id, routine.id, "d".repeat(64), validate)).rejects.toThrow(
+    "postcommit",
+  );
+  const acknowledged = routines
+    .listRuns(agent.id, routine.id, 10)
+    .find((r) => r.id !== run.id && r.id !== unattached.id);
+  expect(acknowledged?.deliveryId).toBeTruthy();
+  expect(acknowledged?.status).toBe("queued");
+  preview.mockRestore();
   await expect(
     scheduler.receiveWatchEvent(agent.id, routine.id, "b".repeat(64), () => {
       throw Error("Source revoked");
     }),
   ).rejects.toThrow("revoked");
-  expect(routines.listRuns(agent.id, routine.id, 10)).toHaveLength(2);
+  expect(routines.listRuns(agent.id, routine.id, 10)).toHaveLength(3);
 });

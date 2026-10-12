@@ -539,7 +539,20 @@ export class RoutineScheduler implements RoutineDueSource {
       this.#hooks.emitQueue(agent.id);
       this.#hooks.scheduleDrain(agent.id);
     } catch (error) {
-      this.#transitionRunWithConversation(run, "failed", error instanceof Error ? error.message : String(error));
+      const key = run.triggerId ? `routine:${run.triggerId}:${run.scheduledFor}` : `routine:manual:${run.id}`;
+      const committed = this.#mailbox.deliveryForKey(key)?.delivery;
+      if (
+        committed &&
+        committed.recipientAgentId === run.agentId &&
+        committed.sender.kind === "routine" &&
+        committed.sender.runId === run.id
+      ) {
+        // A post-commit presentation/ack error does not mean execution failed or allow a retry.
+        this.#routines.attachDelivery(run.id, committed.id);
+        this.reconcileDelivery(committed);
+      } else {
+        this.#transitionRunWithConversation(run, "failed", error instanceof Error ? error.message : String(error));
+      }
       this.stateChanged(run.agentId);
       throw error;
     }
