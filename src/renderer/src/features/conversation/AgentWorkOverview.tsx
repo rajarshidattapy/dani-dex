@@ -5,7 +5,7 @@ import type {
   QueueSnapshot,
   Routine,
 } from "@dani-dex/contracts/ipc";
-import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
 import { Button } from "../../components/ui";
 import type { AgentProfile } from "../../data";
 
@@ -50,12 +50,14 @@ export function AgentWorkOverview(props: {
       void reload();
     },
   );
-  const unsubscribe = window.danidex.agent.onEvent((event) => {
-    if (event.type === "queue-changed" || event.type === "routines-changed") void reload();
-  });
-  onCleanup(() => {
-    generation++;
-    unsubscribe();
+  onSettled(() => {
+    const unsubscribe = window.danidex.agent.onEvent((event) => {
+      if (event.type === "queue-changed" || event.type === "routines-changed") void reload();
+    });
+    return () => {
+      generation++;
+      unsubscribe();
+    };
   });
   const deliveries = () =>
     state()?.queues.flatMap((q) => q.deliveries.filter((d) => d.recipientAgentId === q.agentId)) ?? [];

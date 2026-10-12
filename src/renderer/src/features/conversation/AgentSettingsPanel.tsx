@@ -28,6 +28,7 @@ import {
 } from "../../components/SettingsPanel";
 import {
   Button,
+  Text,
   Input,
   Popover,
   Select,
@@ -600,7 +601,6 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
                 class={{ selected: settingsTab() === tab }}
                 onClick={() => {
                   setSettingsTab(tab);
-                  setProfileOpen(false);
                   if (tab === "memory")
                     setDraft((s) => {
                       s.memories.open = true;
@@ -614,7 +614,9 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
         </nav>
       </Show>
       <Show when={!draft.routines.open && settingsTab() === "people"}>
-        <SettingsPeople agentId={props.agent.id} />
+        <SettingsPanelContent>
+          <SettingsPeople agentId={props.agent.id} />
+        </SettingsPanelContent>
       </Show>
       <Show when={!draft.routines.open && settingsTab() === "channels"}>
         <SettingsPanelContent>

@@ -236,6 +236,7 @@ export function createConversationViewScope(props: ConversationProps) {
     agentActivityLabels: resources.agentActivityLabels,
   });
   const { renderedAgentActivity, agentActivitySpaceReserved, setAgentActivitySpaceReserved, agentActivity } = activity;
+  const screenOpen = () => ["browser", "browser-expanded", "browser-pip"].includes(activeRightPanel() ?? "");
   const browser = createBrowserStore({
     props,
     browserOpenRequests: resources.browserOpenRequests,
@@ -268,7 +269,7 @@ export function createConversationViewScope(props: ConversationProps) {
   const browserSidebarOpen = () => browserInteractionAvailable() && activeRightPanel() === "browser";
   const browserExpandedOpen = () => browserInteractionAvailable() && activeRightPanel() === "browser-expanded";
   const browserPipOpen = () => browserInteractionAvailable() && activeRightPanel() === "browser-pip";
-  const screenOpen = () => browserSidebarOpen() || browserExpandedOpen() || browserPipOpen();
+
   function showBrowserPanel() {
     setActiveRightPanel("browser");
     if (browserTabs().length === 0) void openBrowserAddress();

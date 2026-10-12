@@ -244,3 +244,63 @@
     color: var(--dani-dex-text-secondary);
   }
 }
+
+.agent-options-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 2px;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+.agent-options-tabs button {
+  padding: 7px 7px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--muted-foreground, #aaa);
+  cursor: pointer;
+}
+.agent-options-tabs button.selected {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--foreground, #eee);
+}
+.agent-work-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 16px;
+}
+.agent-work-overview h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.agent-work-overview h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.agent-work-overview section {
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+.agent-work-overview p {
+  color: var(--muted-foreground, #aaa);
+  margin: 5px 0;
+}
+.overview-work-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+}
+.telegram-setup-description {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  -webkit-line-clamp: unset !important;
+  display: block !important;
+  line-height: 1.5;
+}

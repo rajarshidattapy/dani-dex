@@ -71,7 +71,7 @@ export function SettingsTelegram() {
         <Item>
           <ItemContent>
             <ItemTitle>Bot credential</ItemTitle>
-            <ItemDescription>
+            <ItemDescription class="telegram-setup-description">
               Stored using secure system storage. It is never sent to a model. Setup stays off until you enable it.
             </ItemDescription>
             <Input
@@ -144,9 +144,9 @@ export function SettingsTelegram() {
             <Show when={state.error || state.status?.error}>
               <ItemDescription role="alert">{state.error || state.status?.error}</ItemDescription>
             </Show>
-            <ItemDescription>
-              Text-only first slice. Voice, files and edits are not wired yet. Chief replies need your review before
-              sending. No live provider test completed.
+            <ItemDescription class="telegram-setup-description">
+              Text and reviewed documents can reach Chief. Voice and edits are unavailable. Replies need your review
+              before sending. No live Telegram round-trip has been completed.
             </ItemDescription>
           </ItemContent>
         </Item>
@@ -156,7 +156,7 @@ export function SettingsTelegram() {
           <Item>
             <ItemContent>
               <ItemTitle>Reply delivery unconfirmed: chat {reply.conversationId}</ItemTitle>
-              <ItemDescription>
+              <ItemDescription class="telegram-setup-description">
                 The connection ended before Telegram confirmed this send. Check this chat before sending again. Dani-Dex
                 will not retry automatically.
               </ItemDescription>

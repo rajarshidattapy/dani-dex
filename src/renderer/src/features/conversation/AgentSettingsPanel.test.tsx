@@ -548,3 +548,33 @@ describe("AgentSettingsPanel", () => {
     expect(screen.queryByText(/may ask for approval first/)).not.toBeInTheDocument();
   });
 });
+
+it("switches the four options tabs without halting the renderer", async () => {
+  mock = createMockDaniDex();
+  window.danidex = mock.api;
+  const agent = { ...STORY_AGENTS[0], id: "chief", name: "Chief of staff" };
+  baseRender(() => (
+    <AgentSettingsPanel
+      agent={agent}
+      runtimeSettings={{ provider: "opencode", model: "dani/dani-free-auto", reasoningEffort: "" }}
+      agentStatus={STORY_AGENT_STATUS}
+      modelOptions={STORY_MODELS}
+      working={false}
+      maxWidth={() => 640}
+      onClose={vi.fn()}
+      onWidthChange={vi.fn()}
+      onOpenUsage={vi.fn()}
+      onUpdateAgent={vi.fn(async () => undefined)}
+      onUpdateRuntimeSettings={vi.fn(async () => true)}
+      onSetAgentAvatar={vi.fn(async () => undefined)}
+    />
+  ));
+  await screen.findByRole("button", { name: "People", exact: true });
+  fireEvent.click(screen.getByRole("button", { name: "People", exact: true }));
+  await screen.findByText("Connect a person");
+  fireEvent.click(screen.getByRole("button", { name: "Channels", exact: true }));
+  await screen.findByText("Chief of staff's channels");
+  await screen.findByText("Telegram - Chief");
+  fireEvent.click(screen.getByRole("button", { name: "Overview", exact: true }));
+  await screen.findByText("Chief of staff, right now");
+});

@@ -1,3 +1,4 @@
+import { RobotAvatar } from "../agents/manzanilla/RobotAvatar";
 import type { ServerSummary } from "@dani-dex/contracts/ipc";
 import { createEffect, createSignal, createStore, For, onCleanup, Show } from "solid-js";
 import { createScrollFades } from "../../components/createScrollFades";
@@ -425,8 +426,10 @@ function ServerMark(props: { server: ServerSummary }) {
     },
   );
   return (
-    <Show when={!failed() ? props.server.logoUrl : null} fallback={<ServerGradientLogo seed={props.server.id} />}>
-      {(url) => <img class="server-rail-logo" src={url()} alt="" draggable={false} onError={() => setFailed(true)} />}
+    <Show when={props.server.kind !== "local"} fallback={<RobotAvatar size={42} label="Chief of staff" role="chief" />}>
+      <Show when={!failed() ? props.server.logoUrl : null} fallback={<ServerGradientLogo seed={props.server.id} />}>
+        {(url) => <img class="server-rail-logo" src={url()} alt="" draggable={false} onError={() => setFailed(true)} />}
+      </Show>
     </Show>
   );
 }
