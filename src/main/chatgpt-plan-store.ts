@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
+import { chatGptHostId } from "./chatgpt-host-id";
 import type { SecretCipher } from "./provider-credential-store";
 
 const registrationSchema = z.object({
@@ -18,7 +19,14 @@ const registrationSchema = z.object({
 export type ChatGptRegistration = z.infer<typeof registrationSchema>;
 const stateSchema = z.object({
   version: z.literal(1),
-  hostId: z.string().uuid(),
+  hostId: z.string().refine((value) => {
+    try {
+      chatGptHostId(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }),
   registrations: z.array(registrationSchema).max(32),
   selectedClientId: z.string().nullable().optional(),
 });
@@ -47,7 +55,7 @@ export class ChatGptPlanStore {
       } catch (error) {
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
           throw new Error("ChatGPT sign-in storage is unreadable.");
-        await this.#commit({ version: 1, hostId: randomUUID(), registrations: [] });
+        await this.#commit({ version: 1, hostId: chatGptHostId(randomUUID()), registrations: [] });
         return;
       }
       try {
@@ -55,7 +63,9 @@ export class ChatGptPlanStore {
         const envelope = envelopeSchema.parse(JSON.parse(bytes.toString("utf8")));
         const state = stateSchema.parse(JSON.parse(this.cipher.decrypt(Buffer.from(envelope.ciphertext, "base64"))));
         if (new Set(state.registrations.map((r) => r.clientId)).size !== state.registrations.length) throw new Error();
-        this.#state = state;
+        const hostId = chatGptHostId(state.hostId);
+        if (hostId !== state.hostId) await this.#commit({ ...state, hostId });
+        else this.#state = state;
       } catch {
         throw new Error("ChatGPT sign-in storage is unreadable. Existing registrations were kept.");
       }
@@ -106,7 +116,7 @@ export class ChatGptPlanStore {
   #loaded(): State {
     if (!this.#state)
       throw new Error(
-        "ChatGPT sign-in storage is locked. Open Dani-Dex on your Mac and unlock Keychain, then try ChatGPT again.",
+        "ChatGPT sign-in storage is locked. Unlock your device's secure storage, restart Dani-Dex, then try ChatGPT again.",
       );
     return this.#state;
   }

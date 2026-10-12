@@ -163,7 +163,7 @@ export class McpServerStore {
    * This is a data rewrite rather than a schema migration: no DDL changes, and running it again
    * converts nothing, so it runs on every startup rather than behind a schema version.
    */
-  migrateCatalogBridgesToHttp(now = new Date().toISOString()): number {
+  migrateCatalogBridgesToHttp(now = new Date().toISOString()) {
     const db = this.database.connection;
     let converted = 0;
     db.exec("BEGIN IMMEDIATE");

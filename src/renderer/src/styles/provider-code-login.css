@@ -267,3 +267,21 @@
 .voice-auth-button-logo path {
   fill: currentColor;
 }
+
+.chatgpt-sign-in-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dani-dex-space-4);
+}
+
+.chatgpt-sign-in-dialog .provider-code-login-hint {
+  margin: 0;
+  color: var(--dani-dex-text-muted);
+  font-size: var(--dani-dex-text-sm);
+}
+
+.chatgpt-sign-in-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dani-dex-space-2);
+}

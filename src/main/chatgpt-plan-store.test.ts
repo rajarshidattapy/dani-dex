@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { ChatGptAuthorizationAttempt } from "./chatgpt-plan-oauth";
 import { ChatGptPlanStore, type ChatGptRegistration } from "./chatgpt-plan-store";
 
 const homes: string[] = [];
@@ -36,6 +37,7 @@ describe("ChatGPT protected registrations", () => {
       store = new ChatGptPlanStore(path, cipher);
     await store.load();
     const host = store.hostId();
+    expect(host).toMatch(/^urn:uuid:[0-9a-f-]{36}$/);
     await store.save(record);
     const raw = await readFile(path, "utf8");
     expect(raw).not.toContain("private-access");
@@ -49,6 +51,39 @@ describe("ChatGPT protected registrations", () => {
     const restarted = new ChatGptPlanStore(path, cipher);
     await restarted.load();
     expect(restarted.selected()).toEqual(record);
+  });
+  it("upgrades a legacy bare UUID in place and produces the accepted authorize parameter", async () => {
+    const path = await fixture();
+    const uuid = "de305d54-75b4-431b-adb2-eb6b9e546014";
+    await writeFile(
+      path,
+      JSON.stringify({
+        version: 1,
+        ciphertext: cipher
+          .encrypt(
+            JSON.stringify({ version: 1, hostId: uuid, registrations: [record], selectedClientId: record.clientId }),
+          )
+          .toString("base64"),
+      }),
+    );
+    const store = new ChatGptPlanStore(path, cipher);
+    await store.load();
+    expect(store.hostId()).toBe(`urn:uuid:${uuid}`);
+    expect(store.selected()).toEqual(record);
+    const auth = new URL(
+      new ChatGptAuthorizationAttempt({
+        hostId: store.hostId(),
+        appName: "Dani-Dex",
+        redirectUri: "http://127.0.0.1:54321/auth/callback",
+      }).authorizationUrl,
+    );
+    expect(auth.searchParams.get("ext_agent_host_id")).toBe(`urn:uuid:${uuid}`);
+    const restarted = new ChatGptPlanStore(path, cipher);
+    await restarted.load();
+    expect(restarted.hostId()).toBe(store.hostId());
+    expect(restarted.selected()).toEqual(record);
+    const envelope = JSON.parse(await readFile(path, "utf8"));
+    expect(JSON.parse(cipher.decrypt(Buffer.from(envelope.ciphertext, "base64"))).hostId).toBe(`urn:uuid:${uuid}`);
   });
   it("serializes concurrent updates and removes only the selected registration", async () => {
     const store = new ChatGptPlanStore(await fixture(), cipher);
@@ -66,7 +101,7 @@ describe("ChatGPT protected registrations", () => {
     await writeFile(path, "old-unreadable");
     const store = new ChatGptPlanStore(path, cipher);
     await expect(store.load()).rejects.toThrow("kept");
-    await expect(store.save(record)).rejects.toThrow("unlock Keychain");
+    await expect(store.save(record)).rejects.toThrow("secure storage");
     expect(await readFile(path, "utf8")).toBe("old-unreadable");
   });
   it("does not write plaintext or publish memory when OS encryption fails", async () => {
@@ -79,6 +114,6 @@ describe("ChatGPT protected registrations", () => {
     });
     await expect(store.load()).rejects.toThrow("Locked");
     await expect(readFile(path)).rejects.toThrow();
-    expect(() => store.hostId()).toThrow("unlock Keychain");
+    expect(() => store.hostId()).toThrow("secure storage");
   });
 });

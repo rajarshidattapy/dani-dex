@@ -5,6 +5,15 @@ All notable changes to Dani-Dex will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.18.5] - 2026-10-13
+
+### Fixed
+
+- Send OpenAI's required `urn:uuid:` host identifier in ChatGPT authorization. Upgrade older bare UUIDs in place without replacing the installation identity, saved accounts or tokens; reject malformed host IDs before opening the browser.
+- Add a clear way to end sign-in when the browser shows an error, with retry guidance instead of raw provider JSON. Keep PKCE, state, identity verification and account-preserving storage checks intact.
+- Align two existing return annotations with the current lint checker without changing their runtime behavior.
+- Authorization syntax and account-preserving migration are regression-tested. Live OpenAI sign-in and Windows installed-app confirmation are not claimed by unit tests.
+
 ## [0.18.4] - 2026-10-13
 
 ### Fixed

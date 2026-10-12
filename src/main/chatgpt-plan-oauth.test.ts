@@ -4,7 +4,7 @@ import { ChatGptAuthorizationAttempt, hasChatGptPlanScope } from "./chatgpt-plan
 
 const options = {
   redirectUri: "http://127.0.0.1:54321/auth/callback",
-  hostId: "urn:uuid:stable-host",
+  hostId: "urn:uuid:de305d54-75b4-431b-adb2-eb6b9e546014",
   appName: "Dani-Dex",
 };
 function callback(attempt: ChatGptAuthorizationAttempt, values: Record<string, string> = {}): string {
@@ -26,6 +26,7 @@ describe("ChatGPT public-client authorization foundation", () => {
     const auth = new URL(a.authorizationUrl);
     expect(auth.origin + auth.pathname).toBe("https://auth.openai.com/api/accounts/authorize");
     expect(auth.searchParams.get("client_id")).toBe("dynamic_agent_client");
+    expect(auth.searchParams.get("ext_agent_host_id")).toBe(options.hostId);
     expect(auth.searchParams.get("resource")).toBe("https://api.openai.com/v1");
     expect(auth.searchParams.get("state")).not.toBe(new URL(b.authorizationUrl).searchParams.get("state"));
     expect(a.nonce).not.toBe(b.nonce);
@@ -37,6 +38,16 @@ describe("ChatGPT public-client authorization foundation", () => {
     expect(result.tokenForm.get("redirect_uri")).toBe(options.redirectUri);
     expect(result.tokenForm.has("client_secret")).toBe(false);
     expect(() => a.consumeCallback(callback(a))).toThrow("ended");
+  });
+  it("normalizes a valid legacy host UUID and rejects malformed host IDs before browser launch", () => {
+    const bare = options.hostId.slice("urn:uuid:".length);
+    expect(
+      new URL(new ChatGptAuthorizationAttempt({ ...options, hostId: bare }).authorizationUrl).searchParams.get(
+        "ext_agent_host_id",
+      ),
+    ).toBe(options.hostId);
+    for (const hostId of ["stable-host", "urn:uuid:stable-host", "person@example.com", " ", `urn:uuid:${bare} `])
+      expect(() => new ChatGptAuthorizationAttempt({ ...options, hostId })).toThrow("saved host ID");
   });
   it.each([
     "https://127.0.0.1:54321/auth/callback",

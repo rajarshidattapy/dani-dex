@@ -6,7 +6,10 @@ afterEach(async () => {
   await Promise.all(listeners.splice(0).map((l) => l.cancel()));
 });
 async function fixture() {
-  const listener = await startChatGptLoopback({ hostId: "stable-host", appName: "Dani-Dex" });
+  const listener = await startChatGptLoopback({
+    hostId: "urn:uuid:de305d54-75b4-431b-adb2-eb6b9e546014",
+    appName: "Dani-Dex",
+  });
   listeners.push(listener);
   const auth = new URL(listener.attempt.authorizationUrl);
   const callback = new URL(auth.searchParams.get("redirect_uri") ?? "");

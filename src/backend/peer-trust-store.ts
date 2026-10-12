@@ -262,7 +262,7 @@ export class PeerTrustStore {
   envelopeHash(json: string): string {
     return createHash("sha256").update(json).digest("hex");
   }
-  private effectCapability(intent: string): string | null {
+  private effectCapability(intent: string): "calendar.freebusy" | "plans.propose" | null {
     if (intent === "request_freebusy") return "calendar.freebusy";
     if (intent === "propose_times") return "plans.propose";
     return null;

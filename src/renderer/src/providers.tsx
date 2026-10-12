@@ -1,6 +1,7 @@
 import { type AgentProviderId, type AgentStatus, agentProviderDescriptor } from "@dani-dex/contracts/ipc";
 import { createEffect, createSignal, flush, onSettled } from "solid-js";
 import { desktopAnalytics } from "./analytics";
+import { CHATGPT_SIGN_IN_HELP } from "./components/chatgpt-sign-in-help";
 import type { ProviderCodeLoginState } from "./components/ProviderCodeLoginDialog";
 import type { ProviderCodeLoginApi } from "./components/provider-code-login-api";
 import { toast } from "./components/ui";
@@ -78,6 +79,7 @@ const Providers = createSimpleContext({
         flush(() => applyAgentStatus(status));
       } catch (error) {
         endFailedProviderConnection(provider, analytics);
+        if (provider === "codex") throw new Error(CHATGPT_SIGN_IN_HELP);
         throw error;
       } finally {
         if (provider === "codex") setChatGptConnecting(false);
@@ -287,6 +289,10 @@ const Providers = createSimpleContext({
       closeApiKey: () => setApiKeyProvider(null),
       chatGptConnecting,
       cancelChatGpt: () => void window.danidex.chatGptPlan.cancel(),
+      reportChatGptBrowserError: () => {
+        void window.danidex.chatGptPlan.cancel();
+        toast.error(CHATGPT_SIGN_IN_HELP);
+      },
       refreshingProviders,
       applyAgentStatus,
       connectProvider,

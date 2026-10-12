@@ -1,5 +1,6 @@
-// Public-client protocol foundation only. No listener, network calls, token storage or UI yet.
+// Authorization request and single-use callback validation for ChatGPT plan sign-in.
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { chatGptHostId } from "./chatgpt-host-id";
 
 const AUTHORIZATION_ENDPOINT = "https://auth.openai.com/api/accounts/authorize";
 const RESOURCE = "https://api.openai.com/v1";
@@ -31,7 +32,7 @@ export class ChatGptAuthorizationAttempt {
 
   constructor(options: ChatGptAuthorizationOptions) {
     this.#redirect = loopbackCallback(options.redirectUri);
-    if (!options.hostId.trim() || !options.appName.trim()) throw new Error("App name and stable host ID are required.");
+    if (!options.appName.trim()) throw new Error("App name is required.");
     if (options.clientId !== undefined) validateIssuedClient(options.clientId);
     this.#clientId = options.clientId;
     this.#state = randomBytes(32).toString("base64url");
@@ -42,7 +43,7 @@ export class ChatGptAuthorizationAttempt {
       response_type: "code",
       client_id: options.clientId ?? INITIAL_CLIENT,
       redirect_uri: this.#redirect.href,
-      ext_agent_host_id: options.hostId,
+      ext_agent_host_id: chatGptHostId(options.hostId),
       ...(!options.clientId ? { agent_name_hint: options.appName } : {}),
       ...(options.clientId && options.idTokenHint ? { id_token_hint: options.idTokenHint } : {}),
       ...(options.clientId && options.loginHint ? { login_hint: options.loginHint } : {}),
