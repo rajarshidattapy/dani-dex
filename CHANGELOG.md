@@ -5,13 +5,21 @@ All notable changes to Dani-Dex will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-12
+
+### Fixed
+
+- Make enabling Auto Update check for a new stable release immediately when no update is pending.
+  Retry a failed download without waiting for the next scheduled check. Keep checksum verification,
+  active-work restart guards and host-managed update boundaries.
+
 ### Added
 
 - Import reviewed historical context from ChatGPT or Claude during setup or from Memories.
 - Add local duplex voice with Whisper transcription and local system speech.
 - Hold the composer microphone to send on release; cancellation discards unaccepted audio.
 
-### Fixed
+### Other fixes
 
 - Reject thought-only provider answers and preserve retry and approval safeguards.
 - Fix installer verification, provider requests, file transfers, credential redaction and shutdown.
@@ -25,6 +33,19 @@ All notable changes to Dani-Dex will be documented here. The project follows
 - Report a missing local voice runtime separately from an unsupported platform.
 - End stalled login-shell CLI discovery at its deadline so chat can finish starting.
 - Confirm sustained speech before interruption so a short microphone impulse does not discard a valid phrase.
+
+### Changed
+
+- Show Chief in the desktop sidebar and organize the right panel into Overview, People, Channels and Memory.
+- Preserve reviewed gateway media identity and validate media metadata and IPC input at runtime.
+
+### Availability
+
+- This is a desktop update, not a claim that V2 is complete. Background watches and peer effects remain off.
+- Telegram requires explicit owner setup and pairing before use. Slack and WhatsApp integrations are not
+  presented as live or verified in this release.
+- Installed Windows NSIS apps and macOS app bundles can update in place. Linux self-update requires
+  running the AppImage, not an unpacked, deb or rpm installation.
 
 ## [0.17.8] - 2026-09-27
 
