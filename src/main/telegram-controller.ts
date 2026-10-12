@@ -1,21 +1,22 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { z } from "zod";
+import { assertSupportedAttachmentName, attachmentMimeTypeForName } from "@dani-dex/contracts/attachment-files";
 import type {
   AgentSummary,
   AttachmentDataInput,
   ConversationSnapshot,
   QueuedMessageReceipt,
 } from "@dani-dex/contracts/ipc";
+import { z } from "zod";
 import type { DaniDexDatabase } from "../backend/dani-dex-database";
 import { GatewayStore } from "../backend/gateway-store";
-import { assertSupportedAttachmentName, attachmentMimeTypeForName } from "@dani-dex/contracts/attachment-files";
-import { TelegramMediaStore } from "../backend/telegram-media-store";
 import { TelegramGateway } from "../backend/telegram-gateway";
+import { TelegramMediaStore } from "../backend/telegram-media-store";
 import { TelegramTransport, TelegramTransportError } from "../backend/telegram-transport";
 import { DEFAULT_CHIEF_ID } from "./chief-of-staff-bootstrap";
 import type { SecretCipher } from "./provider-credential-store";
+
 const credentials = z.object({ version: z.literal(1), ciphertext: z.string(), accountId: z.string().regex(/^\d+$/) });
 /** Desktop-local only. Never exposed through the public Team API. */
 export class TelegramController {
@@ -28,6 +29,7 @@ export class TelegramController {
   private abort: AbortController | null = null;
   private error: string | null = null;
   private stopped = false;
+  private generation = 0;
   private chiefId = DEFAULT_CHIEF_ID;
   private readonly mediaDispatch = new Set<string>();
   constructor(
@@ -100,6 +102,7 @@ export class TelegramController {
     this.stop();
   }
   stop(): void {
+    this.generation += 1;
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
@@ -137,19 +140,22 @@ export class TelegramController {
     assertSupportedAttachmentName(manifest.safeName);
     const item = [...this.store.pending(id), ...this.store.approved(id)].find((i) => i.eventId === eventId);
     if (!item) throw new Error("Media inbox review is unavailable.");
+    const generation = this.generation;
     this.mediaDispatch.add(eventId);
     try {
+      const validate = () => {
+        if (this.stopped || generation !== this.generation) throw new Error("Telegram media delivery stopped.");
+        this.media.assertReviewed(id, "local-owner", eventId, digest);
+      };
+      if (this.stopped || generation !== this.generation) throw new Error("Telegram media delivery stopped.");
       if (this.store.pending(id).some((i) => i.eventId === eventId))
-        if (this.store.pending(id).some((i) => i.eventId === eventId))
-          this.media.review(id, "local-owner", eventId, digest);
-      const validate = () => this.media.assertReviewed(id, "local-owner", eventId, digest);
+        this.media.review(id, "local-owner", eventId, digest);
       validate();
       const bytes = await new TelegramTransport(() => this.token, this.options.request).downloadFile(manifest.fileId);
       validate();
       if (manifest.size !== null && bytes.byteLength !== manifest.size) throw new Error("Document size changed.");
       if (this.store.pending(id).some((i) => i.eventId === eventId))
-        if (this.store.pending(id).some((i) => i.eventId === eventId))
-          this.store.approveInbound(id, "local-owner", eventId, item.body, item.conversationId, item.senderId);
+        this.store.approveInbound(id, "local-owner", eventId, item.body, item.conversationId, item.senderId);
       const receipt = await this.options.agents.deliverReviewedGatewayMessage({
         agentId: this.chiefId,
         gatewayId: id,
