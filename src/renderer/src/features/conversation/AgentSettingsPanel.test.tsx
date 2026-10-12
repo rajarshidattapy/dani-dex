@@ -8,7 +8,7 @@ import { AgentSkillsModal } from "./AgentSkillsModal";
 let mock: MockDaniDexControls | undefined;
 const render: typeof baseRender = (ui, options) => {
   const view = baseRender(ui, options);
-  const settings = screen.queryByRole("button", { name: "Agent settings", exact: true });
+  const settings = screen.queryByRole("button", { name: "Agent settings" });
   if (settings) fireEvent.click(settings);
   return view;
 };
@@ -556,7 +556,7 @@ it("switches the four options tabs without halting the renderer", async () => {
   baseRender(() => (
     <AgentSettingsPanel
       agent={agent}
-      runtimeSettings={{ provider: "opencode", model: "dani/dani-free-auto", reasoningEffort: "" }}
+      runtimeSettings={{ provider: "opencode", model: "dani/dani-free-auto", reasoningEffort: "medium" }}
       agentStatus={STORY_AGENT_STATUS}
       modelOptions={STORY_MODELS}
       working={false}
@@ -569,12 +569,12 @@ it("switches the four options tabs without halting the renderer", async () => {
       onSetAgentAvatar={vi.fn(async () => undefined)}
     />
   ));
-  await screen.findByRole("button", { name: "People", exact: true });
-  fireEvent.click(screen.getByRole("button", { name: "People", exact: true }));
+  await screen.findByRole("button", { name: "People" });
+  fireEvent.click(screen.getByRole("button", { name: "People" }));
   await screen.findByText("Connect a person");
-  fireEvent.click(screen.getByRole("button", { name: "Channels", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Channels" }));
   await screen.findByText("Chief of staff's channels");
   await screen.findByText("Telegram - Chief");
-  fireEvent.click(screen.getByRole("button", { name: "Overview", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Overview" }));
   await screen.findByText("Chief of staff, right now");
 });

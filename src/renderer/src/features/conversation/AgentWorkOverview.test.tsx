@@ -28,9 +28,9 @@ it("shows truthful queue coverage and opens existing schedule creation without s
   await screen.findByText("Recent results");
   expect(screen.getByText(/Coverage is partial/)).toBeInTheDocument();
   expect(screen.getByText(/One-shot watches are not ready/)).toBeInTheDocument();
-  await fireEvent.click(screen.getByRole("button", { name: "Create schedule", exact: true }));
+  await fireEvent.click(screen.getByRole("button", { name: "Create schedule" }));
   expect(create).toHaveBeenCalledOnce();
-  await fireEvent.click(screen.getByRole("button", { name: "Agent settings", exact: true }));
+  await fireEvent.click(screen.getByRole("button", { name: "Agent settings" }));
   expect(settings).toHaveBeenCalledOnce();
 });
 it("does not turn a failed read into an empty/no-work claim", async () => {

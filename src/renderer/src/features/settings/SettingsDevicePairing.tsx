@@ -144,8 +144,8 @@ export function SettingsDevicePairing() {
           <Item>
             <ItemContent>
               <QrCode value={state.url} label="Remote View pairing QR code" />
-              <Input aria-label="RC pairing code" value={state.code} readOnly />
-              <Input aria-label="Device pairing link" value={state.url} readOnly />
+              <Input aria-label="RC pairing code" value={state.code} readonly />
+              <Input aria-label="Device pairing link" value={state.url} readonly />
               <Text>
                 Pair only your own device. The code works once for 14 days; the device session lasts 30 days. Generating
                 a new code replaces this one.
