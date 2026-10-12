@@ -120,10 +120,17 @@ export class RoutineWatchStore implements RoutineDueSource {
       const receipt = this.database.connection
         .prepare("SELECT result_json FROM orchestration_command_receipts WHERE command_id=?")
         .get(commandId);
-      if (!receipt) continue;
+      const creation =
+        receipt ??
+        this.database.connection
+          .prepare(
+            "SELECT json_object('id',json_extract(payload_json,'$.runId')) result_json FROM orchestration_events WHERE command_id=? AND aggregate_type='routine-run' AND event_type='routine.run-created' ORDER BY sequence LIMIT 1",
+          )
+          .get(commandId);
+      if (!creation) continue;
       let runId: string;
       try {
-        const r = JSON.parse(String(receipt.result_json));
+        const r = JSON.parse(String(creation.result_json));
         if (typeof r?.id !== "string") continue;
         runId = r.id;
       } catch {
@@ -183,6 +190,26 @@ export class RoutineWatchStore implements RoutineDueSource {
           .run(row.status === "succeeded" ? "completed" : "blocked", String(row.watch_id)),
       );
   }
+  /** Source-only reconciliation. Does not execute routines or cancel committed mailbox work. */
+  reconcileSources(): void {
+    this.recoverCommittedRuns();
+    const rows = this.database.connection
+      .prepare(
+        `SELECT w.watch_id FROM projection_routine_watches w WHERE w.state IN ('waiting','matched') AND (
+        NOT EXISTS(SELECT 1 FROM projection_gateways g WHERE g.gateway_id=w.gateway_id AND g.owner_id=w.owner_id AND g.agent_id=w.agent_id AND g.enabled=1 AND g.generation=w.generation)
+        OR NOT EXISTS(SELECT 1 FROM projection_gateway_chats c WHERE c.gateway_id=w.gateway_id AND c.conversation_id=w.conversation_id AND c.sender_id=w.sender_id)
+        OR NOT EXISTS(SELECT 1 FROM projection_agent_routines r WHERE r.routine_id=w.routine_id AND r.agent_id=w.agent_id AND r.active=1))`,
+      )
+      .all();
+    for (const row of rows)
+      this.change(String(row.watch_id), "source-blocked", (db) =>
+        db
+          .prepare(
+            "UPDATE projection_routine_watches SET state='blocked' WHERE watch_id=? AND state IN ('waiting','matched')",
+          )
+          .run(String(row.watch_id)),
+      );
+  }
   nextDueAt(): string | null {
     const r = this.database.connection
       .prepare("SELECT min(deadline) d FROM projection_routine_watches WHERE state IN ('waiting','matched')")
@@ -190,7 +217,7 @@ export class RoutineWatchStore implements RoutineDueSource {
     return r?.d ? new Date(Number(r.d)).toISOString() : null;
   }
   async processDue(now: Date): Promise<void> {
-    this.recoverCommittedRuns();
+    this.reconcileSources();
     const due = this.nextDueAt();
     if (!due || Date.parse(due) > now.getTime()) return;
     this.change("deadlines", "timed-out", (db) =>

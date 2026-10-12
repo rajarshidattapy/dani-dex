@@ -136,6 +136,11 @@ it("cancel, timeout, wrong owner and source revoke stay terminal with no run att
     gateway.approveInbound("g", "owner", "new", "Untrusted", "chat", "sender");
     gateway.revoke("g", "owner");
     expect(() => watches.match(c, "new")).toThrow("authorized");
+    watches.reconcileSources();
+    expect(db.connection.prepare("SELECT state FROM projection_routine_watches WHERE watch_id=?").get(c)?.state).toBe(
+      "blocked",
+    );
+    expect(watches.nextDueAt()).toBeNull();
     expect(routines.listRuns("chief", routine.id, 10)).toHaveLength(0);
   } finally {
     db.close();
@@ -195,6 +200,9 @@ it("recovers lost watch acknowledgement after committed delivery and revoke with
     expect(() => watches.attachRun(w, run.id)).toThrow("Exact committed");
     routines.attachDelivery(run.id, "committed-delivery");
     gateway.revoke("g", "owner");
+    db.connection
+      .prepare("DELETE FROM orchestration_command_receipts WHERE command_id LIKE 'routine-run:event:%'")
+      .run();
     db.close();
     db = new DaniDexDatabase(root);
     await db.initialize();
