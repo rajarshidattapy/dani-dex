@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { isDynamicRecord, isString } from "@dani-dex/contracts/runtime-values";
 import { createDaniDexLogger } from "@dani-dex/logging";
 
+import { releaseCiFailures } from "./release-ci-gate";
+
 const logger = createDaniDexLogger("release-preflight");
 
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
@@ -24,25 +26,27 @@ if (run("git", ["tag", "--list", `v${packageJson.version}`])) {
   failures.push(`tag v${packageJson.version} already exists`);
 }
 
-let releaseSecrets = "";
+// This release workflow ships unsigned desktop installers. Signing secrets are not
+// prerequisites. Its public pinned Dani Free release is the primary resource source.
 try {
-  releaseSecrets = run("gh", ["secret", "list", "--env", "release"]);
+  const head = run("git", ["rev-parse", "HEAD"]);
+  const runs = JSON.parse(
+    run("gh", [
+      "run",
+      "list",
+      "--commit",
+      head,
+      "--event",
+      "push",
+      "--limit",
+      "50",
+      "--json",
+      "headSha,workflowName,event,status,conclusion,databaseId,url",
+    ]),
+  );
+  failures.push(...releaseCiFailures(runs, head));
 } catch {
-  failures.push("GitHub release secrets could not be inspected");
-}
-for (const name of [
-  "CSC_LINK",
-  "CSC_KEY_PASSWORD",
-  "CSC_INSTALLER_LINK",
-  "CSC_INSTALLER_KEY_PASSWORD",
-  "APPLE_ID",
-  "APPLE_APP_SPECIFIC_PASSWORD",
-  "APPLE_TEAM_ID",
-  "MAC_PROVISIONING_PROFILE",
-]) {
-  if (!releaseSecrets.split("\n").some((line) => line.startsWith(`${name}\t`))) {
-    failures.push(`GitHub release secret ${name} is missing`);
-  }
+  failures.push("Exact-HEAD CI and Build main results could not be verified");
 }
 
 if (failures.length > 0) {
