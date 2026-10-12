@@ -43,7 +43,7 @@ export function telegramMediaManifest(update: TelegramUpdate): TelegramMediaMani
     .trim();
   const safeName =
     name && name !== "." && name !== ".." ? name.slice(0, 120) : kind === "voice" ? "voice.ogg" : "document.bin";
-  const fields = {
+  const fields: Omit<TelegramMediaManifest, "reviewDigest"> = {
     updateId: String(update.update_id),
     messageId: String(message.message_id),
     conversationId: String(message.chat.id),

@@ -1,4 +1,4 @@
-import type { PeerOwnerReview, V2ControlStatus } from "@dani-dex/contracts/ipc-team-host";
+import type { PeerOwnerReview, V2ControlStatus } from "@dani-dex/contracts/ipc";
 import { createSignal, createStore, For, onSettled, Show } from "solid-js";
 import { Button, Input, Text, Textarea } from "../../components/ui";
 

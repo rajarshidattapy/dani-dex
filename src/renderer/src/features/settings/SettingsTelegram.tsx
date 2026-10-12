@@ -1,5 +1,5 @@
 import { createStore, onSettled, For, Show } from "solid-js";
-import type { TelegramGatewayStatus } from "@dani-dex/contracts/ipc-team-host";
+import type { TelegramGatewayStatus } from "@dani-dex/contracts/ipc";
 import {
   Button,
   Input,

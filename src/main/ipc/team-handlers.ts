@@ -154,14 +154,30 @@ export function teamIpcHandlers({
         (value) => {
           const v = z
             .object({
-              review: z.object({ requestId: z.string().min(1).max(256) }).passthrough(),
+              review: z
+                .object({
+                  requestId: z.string().min(1).max(256),
+                  contactId: z.string().max(256),
+                  transportPrincipal: z.string().max(512),
+                  contextId: z.string().max(256),
+                  claimedPrincipal: z.object({ handle: z.string().max(256), display: z.string().max(512) }),
+                  text: z.string().max(32000),
+                  envelope: z.record(z.string(), z.unknown()),
+                  state: z.string().max(64),
+                  deadline: z.number().nullable(),
+                  envelopeHash: z.string().max(64).optional(),
+                  verifiedHumanHandle: z.string().max(256).optional(),
+                  displayText: z.string().max(32000).optional(),
+                  displayEnvelope: z.record(z.string(), z.unknown()).optional(),
+                })
+                .strict(),
               decision: z.literal("decline"),
               grantId: z.null(),
             })
             .strict()
             .parse(value);
           return v as {
-            review: import("@dani-dex/contracts/ipc-team-host").PeerOwnerReview;
+            review: import("@dani-dex/contracts/ipc").PeerOwnerReview;
             decision: "decline";
             grantId: null;
           };

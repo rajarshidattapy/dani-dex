@@ -514,3 +514,12 @@ export interface V2ControlStatus {
   grants: Array<{ grantId: string; contactId: string; purpose: string; expiresAt: number; revoked: boolean }>;
   requests: Array<{ requestId: string; contactId: string; state: string; deadline: number | null }>;
 }
+
+export interface RcGatewayStatus {
+  enabled: boolean;
+  phase: "off" | "connecting" | "online" | "reconnecting" | "error";
+  origin: string | null;
+  previousOrigin: string | null;
+  changedAt: string | null;
+  message: string | null;
+}

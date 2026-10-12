@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { PeerOwnerReview, V2ControlStatus } from "@dani-dex/contracts/ipc-team-host";
+import type { PeerOwnerReview, V2ControlStatus } from "@dani-dex/contracts/ipc";
 import { redactContextText } from "@dani-dex/logging";
 import type { DaniDexDatabase } from "../backend/dani-dex-database";
 import { PeerKeyStore } from "../backend/peer-key-store";
