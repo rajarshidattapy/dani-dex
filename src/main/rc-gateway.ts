@@ -202,6 +202,7 @@ export class RcGateway extends EventEmitter<{ changed: [status: RcGatewayStatus]
         await this.#stopChild();
       }
     } catch {
+      if (generation !== this.#generation || this.#closed || !this.#status.enabled) return;
       nextDelay = this.#retryDelay;
       this.#retryDelay = Math.min(this.#retryDelay * 2, 60000);
       this.#publish({ phase: "error", message: "RC gateway is unavailable. Retrying automatically..." });
