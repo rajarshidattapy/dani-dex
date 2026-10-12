@@ -109,6 +109,11 @@ describe("DaniDexDatabase", () => {
         "projection_channel_routine_triggers",
         "projection_channel_routine_runs",
         "file_deletion_outbox",
+        "projection_gateways",
+        "projection_gateway_inbox",
+        "projection_gateway_chats",
+        "projection_routine_watches",
+        "projection_telegram_media",
       ]),
     );
     expect(database.connection.prepare("PRAGMA journal_mode").get()).toMatchObject({
@@ -132,6 +137,14 @@ describe("DaniDexDatabase", () => {
       { version: 21 },
       { version: 22 },
       { version: 23 },
+      { version: 24 },
+      { version: 25 },
+      { version: 26 },
+      { version: 27 },
+      { version: 28 },
+      { version: 29 },
+      { version: 30 },
+      { version: 31 },
     ]);
     database.close();
   });
@@ -1171,6 +1184,14 @@ describe("DaniDexDatabase", () => {
       { version: 21 },
       { version: 22 },
       { version: 23 },
+      { version: 24 },
+      { version: 25 },
+      { version: 26 },
+      { version: 27 },
+      { version: 28 },
+      { version: 29 },
+      { version: 30 },
+      { version: 31 },
     ]);
     expect(migrated.connection.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     migrated.close();
@@ -1238,7 +1259,7 @@ describe("DaniDexDatabase", () => {
       ALTER TABLE projection_provider_sessions_v18 RENAME TO projection_provider_sessions;
       CREATE INDEX provider_sessions_thread
         ON projection_provider_sessions(thread_id, provider, state);
-      DELETE FROM schema_migrations WHERE version IN (19, 20, 21, 22, 23);
+      DELETE FROM schema_migrations WHERE version >= 19;
       PRAGMA foreign_keys = ON;
     `);
     legacy.close();
@@ -1266,7 +1287,7 @@ describe("DaniDexDatabase", () => {
         .get(),
     ).toMatchObject({ sql: expect.stringContaining("'opencode'") });
     expect(migrated.connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-      version: 23,
+      version: 31,
     });
     migrated.close();
   });
@@ -1284,7 +1305,7 @@ describe("DaniDexDatabase", () => {
     const legacy = new DatabaseSync(database.path);
     legacy.exec(`
       DROP TABLE projection_mcp_servers;
-      DELETE FROM schema_migrations WHERE version IN (20, 21, 22, 23);
+      DELETE FROM schema_migrations WHERE version >= 20;
     `);
     legacy.close();
 
@@ -1309,7 +1330,7 @@ describe("DaniDexDatabase", () => {
       { name: "Filesystem" },
     ]);
     expect(reopened.connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-      version: 23,
+      version: 31,
     });
     reopened.close();
   });
@@ -1333,7 +1354,7 @@ describe("DaniDexDatabase", () => {
          '2026-09-14T10:00:00.000Z', '2026-09-14T10:00:00.000Z'),
         ('mcp-2', 'computer_use_saved', 'stdio', 1, 'other', '[]', '[]', '[]', '', '', '[]', 1,
          '2026-09-14T10:00:00.000Z', '2026-09-14T10:00:00.000Z');
-      DELETE FROM schema_migrations WHERE version IN (21, 22, 23);
+      DELETE FROM schema_migrations WHERE version >= 21;
     `);
     legacy.close();
 
@@ -1414,6 +1435,14 @@ describe("DaniDexDatabase", () => {
       { version: 21 },
       { version: 22 },
       { version: 23 },
+      { version: 24 },
+      { version: 25 },
+      { version: 26 },
+      { version: 27 },
+      { version: 28 },
+      { version: 29 },
+      { version: 30 },
+      { version: 31 },
     ]);
     migrated.close();
   });
@@ -1495,6 +1524,14 @@ describe("DaniDexDatabase", () => {
       { version: 21 },
       { version: 22 },
       { version: 23 },
+      { version: 24 },
+      { version: 25 },
+      { version: 26 },
+      { version: 27 },
+      { version: 28 },
+      { version: 29 },
+      { version: 30 },
+      { version: 31 },
     ]);
     retried.close();
   });
