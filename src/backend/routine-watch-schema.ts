@@ -8,8 +8,9 @@ CREATE TABLE IF NOT EXISTS projection_routine_watches (
  conversation_id TEXT NOT NULL,
  sender_id TEXT NOT NULL,
  generation INTEGER NOT NULL,
+ after_rowid INTEGER NOT NULL,
  deadline INTEGER NOT NULL,
- state TEXT NOT NULL CHECK(state IN ('waiting','matched','completed','cancelled','timed-out','blocked')),
+ state TEXT NOT NULL CHECK(state IN ('waiting','matched','running','completed','cancelled','timed-out','blocked')),
  event_id TEXT,
  run_id TEXT
 );
