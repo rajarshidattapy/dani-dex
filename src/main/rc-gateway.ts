@@ -175,8 +175,11 @@ export class RcGateway extends EventEmitter<{ changed: [status: RcGatewayStatus]
       }
       if (this.#status.origin) {
         nextDelay = this.options.intervalMs ?? 30000;
-        const healthy = await (this.options.health ?? publicHealth)(this.#status.origin);
-        if (generation !== this.#generation || this.#closed) return;
+        const origin = this.#status.origin;
+        const child = this.#child;
+        const healthy = await (this.options.health ?? publicHealth)(origin);
+        if (generation !== this.#generation || this.#closed || child !== this.#child || origin !== this.#status.origin)
+          return;
         if (healthy) {
           this.#failures = 0;
           this.#retryDelay = 1000;
