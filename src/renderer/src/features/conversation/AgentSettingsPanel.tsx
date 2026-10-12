@@ -597,7 +597,7 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
             {(tab) => (
               <button
                 type="button"
-                aria-pressed={settingsTab() === tab}
+                aria-pressed={settingsTab() === tab ? "true" : "false"}
                 class={{ selected: settingsTab() === tab }}
                 onClick={() => {
                   setSettingsTab(tab);
