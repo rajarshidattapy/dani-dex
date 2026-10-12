@@ -1,7 +1,7 @@
-# Executable digests verified against the green Dani-Free-proxy CI run 36204958093,
-# artifact ID 10893791354; archive SHA-256 and provenance are locked separately.
-af433e2dc803dab4f6935c1dc07c9000c3c05c4c8ddd8f564702f7fcdb8b5e17  dani-free-darwin-arm64
-a511e771347c0c4010a0efe52a9cc4e16bf07c12570b4e20ca89e336c9ea3899  dani-free-darwin-x64
-0226e95e48e56360bcdadabc09d88ac9c546eca66954331abd0093a1fda85288  dani-free-linux-arm64
-0c61295b1c46b0381a444cc3c33c64d57efc3e13c3883cb27e26394819f2cef0  dani-free-linux-x64
-7a1f1e37cc57739f2a0f70931b4722124d443a6224ea66f9ea515f715e0b820f  dani-free-windows-x64.exe
+# Exact successful CI artifact 11770837807 from run 38302842461.
+# These bytes match the durable public release and the installer pins.
+12347b8acc2b690e67541641fee1ee7d1ec91d702e34f5da64cbc2f922adcd9f  dani-free-darwin-arm64
+d12ea4d5d0f66ec716fc51d6989398796411b97868fe17a235811a5cc0e0bbd6  dani-free-darwin-x64
+0780ae5710a88c46ccab8bac5d33304eea04b3a154a6124cd4520bf78928e73b  dani-free-linux-arm64
+a82f98348c4c38b98b9b13b104545d882b3dd489e2026218e9bf562730ee2239  dani-free-linux-x64
+ab37b6ecea1e418f5c8784afe6492ce9e588f3188d72cc64d055929638704856  dani-free-windows-x64.exe

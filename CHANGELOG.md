@@ -5,6 +5,13 @@ All notable changes to Dani-Dex will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.18.4] - 2026-10-13
+
+### Fixed
+
+- Pin the durable Dani Free 0.1.1 public release and its byte-identical CI backup together with the installer hashes. Keep the existing primary-release verification route intact; refuse mismatched release or backup provenance.
+- Correct the 0.18.3 source-only packaging failure before a desktop release. No 0.18.3 updater feed was published.
+
 ## [0.18.3] - 2026-10-13
 
 - Do not start the Dani Free inference engine for discovery, models, status or refresh. The pinned proxy starts it on real requests and releases it after the idle window.
