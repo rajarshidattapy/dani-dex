@@ -5,6 +5,7 @@ import { expect, it, vi } from "vitest";
 import { DaniDexDatabase } from "./dani-dex-database";
 import { GatewayStore } from "./gateway-store";
 import { TelegramGateway } from "./telegram-gateway";
+import { TelegramMediaStore } from "./telegram-media-store";
 import { TelegramTransport } from "./telegram-transport";
 
 it("receives once, requires review, reconciles mailbox crash and returns only approved replies", async () => {
@@ -223,7 +224,7 @@ it("rolls back inbox and offset if atomic metadata persistence fails", async () 
   }
 });
 
-it("rejects unhandled media and edits atomically instead of allowing placeholder text approval", async () => {
+it.each([false, true])("rejects unhandled media and edits atomically with media adapter=%s", async (withMedia) => {
   const root = await mkdtemp(join(tmpdir(), "tg-unsupported-"));
   const db = new DaniDexDatabase(root);
   await db.initialize();
@@ -250,7 +251,13 @@ it("rejects unhandled media and edits atomically instead of allowing placeholder
       }),
     );
     const deliver = vi.fn();
-    const gateway = new TelegramGateway("g", store, new TelegramTransport(() => "123:FAKE", request), { deliver });
+    const gateway = new TelegramGateway(
+      "g",
+      store,
+      new TelegramTransport(() => "123:FAKE", request),
+      { deliver },
+      withMedia ? new TelegramMediaStore(db) : undefined,
+    );
     await gateway.poll();
     expect(store.pending("g")).toEqual([]);
     expect(store.approved("g")).toEqual([]);
