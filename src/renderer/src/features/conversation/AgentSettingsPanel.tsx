@@ -28,7 +28,6 @@ import {
 } from "../../components/SettingsPanel";
 import {
   Button,
-  Text,
   Input,
   Popover,
   Select,
@@ -37,18 +36,19 @@ import {
   SelectTrigger,
   SelectValue,
   Switch,
+  Text,
   Textarea,
 } from "../../components/ui";
 import type { AgentProfile } from "../../data";
 import { errorMessage } from "../../error-message";
 import { AgentAvatar } from "../agents/AgentAvatar";
 import { ROBOT_ROLES } from "../agents/manzanilla/robot-model";
+import { SettingsPeople } from "../settings/SettingsPeople";
+import { SettingsTelegram } from "../settings/SettingsTelegram";
 import { AgentMemoriesModal } from "./AgentMemoriesModal";
 import { AgentOperatingInstructionsModal } from "./AgentOperatingInstructionsModal";
 import { AgentRoutinesSettings, type RoutineSelectionRequest } from "./AgentRoutinesSettings";
 import { AgentSkillsModal, type AgentSkillsMode, userAssignedSkills } from "./AgentSkillsModal";
-import { SettingsPeople } from "../settings/SettingsPeople";
-import { SettingsTelegram } from "../settings/SettingsTelegram";
 import { AgentWorkOverview } from "./AgentWorkOverview";
 import { agentMemoriesPort } from "./memories-port";
 import { agentRoutinesPort } from "./routines-port";
@@ -595,8 +595,9 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
         <nav class="agent-options-tabs" aria-label="Agent options">
           <For each={["overview", "people", "channels", "memory"]}>
             {(tab) => (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="sm"
                 aria-pressed={settingsTab() === tab ? "true" : "false"}
                 class={{ selected: settingsTab() === tab }}
                 onClick={() => {
@@ -608,7 +609,7 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
                 }}
               >
                 {tab[0].toUpperCase() + tab.slice(1)}
-              </button>
+              </Button>
             )}
           </For>
         </nav>

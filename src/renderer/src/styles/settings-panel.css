@@ -224,7 +224,7 @@
   align-items: center;
   gap: var(--dani-dex-space-2);
   color: var(--dani-dex-text-muted);
-  font-size: var(--dani-dex-text-sm);
+  font-size: var(--dani-dex-text-md);
   font-variant-numeric: tabular-nums;
 }
 
@@ -250,44 +250,44 @@
   flex-wrap: nowrap;
   gap: 2px;
   padding: 10px 8px;
-  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-bottom: 1px solid var(--dani-dex-border-strong);
 }
 .agent-options-tabs button {
   padding: 7px 7px;
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: var(--dani-dex-radius-md);
+  font-size: var(--dani-dex-text-sm);
   line-height: 1.2;
-  color: var(--muted-foreground, #aaa);
+  color: var(--dani-dex-text-secondary);
   cursor: pointer;
 }
 .agent-options-tabs button.selected {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--foreground, #eee);
+  background: var(--dani-dex-bg-control-hover);
+  color: var(--dani-dex-text-primary);
 }
 .agent-work-overview {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  font-size: 13px;
+  font-size: var(--dani-dex-text-md);
   line-height: 1.45;
   padding: 16px;
 }
 .agent-work-overview h2 {
-  font-size: 16px;
+  font-size: var(--dani-dex-text-xl);
   font-weight: 600;
 }
 .agent-work-overview h3 {
-  font-size: 13px;
+  font-size: var(--dani-dex-text-md);
   font-weight: 600;
   margin-bottom: 8px;
 }
 .agent-work-overview section {
   padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
+  border: 1px solid var(--dani-dex-border-strong);
+  border-radius: var(--dani-dex-radius-character-choice);
 }
 .agent-work-overview p {
-  color: var(--muted-foreground, #aaa);
+  color: var(--dani-dex-text-secondary);
   margin: 5px 0;
 }
 .overview-work-card {

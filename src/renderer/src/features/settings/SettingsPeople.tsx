@@ -1,12 +1,23 @@
 import type { PeerOwnerReview, V2ControlStatus } from "@dani-dex/contracts/ipc";
+import { isDynamicRecord } from "@dani-dex/contracts/runtime-values";
 import { createSignal, createStore, For, onSettled, Show } from "solid-js";
-import { Button, Input, Text, Textarea } from "../../components/ui";
+import { Button, Checkbox, Input, Text, Textarea } from "../../components/ui";
 
 /** Owner-local controls only. This panel never enables a public listener or sends a peer message. */
 export function SettingsPeople(props: { agentId: string }) {
   const chief = () => props.agentId === "chief" || props.agentId === "chief-of-staff";
   const [step, setStep] = createSignal(1);
-  const [state, set] = createStore({
+  const [state, set] = createStore<{
+    name: string;
+    key: string;
+    fingerprint: string;
+    preview: string;
+    verified: boolean;
+    busy: boolean;
+    error: string;
+    status: V2ControlStatus | null;
+    inbox: PeerOwnerReview[];
+  }>({
     name: "",
     key: "",
     fingerprint: "",
@@ -14,8 +25,8 @@ export function SettingsPeople(props: { agentId: string }) {
     verified: false,
     busy: false,
     error: "",
-    status: null as V2ControlStatus | null,
-    inbox: [] as PeerOwnerReview[],
+    status: null,
+    inbox: [],
   });
   async function refresh() {
     const [status, inbox] = await Promise.all([window.danidex.host.v2Status(), window.danidex.host.peerInbox()]);
@@ -111,9 +122,9 @@ export function SettingsPeople(props: { agentId: string }) {
           <Show when={state.preview}>
             <Text>Compare this fingerprint with the person through a trusted channel:</Text>
             <code class="break-all text-xs">{state.preview}</code>
-            <label>
-              <input
-                type="checkbox"
+            <label for="peer-fingerprint-verified">
+              <Checkbox
+                id="peer-fingerprint-verified"
                 checked={state.verified}
                 onChange={(e) =>
                   set((s) => {
@@ -202,7 +213,11 @@ export function SettingsPeople(props: { agentId: string }) {
               <Show when={review.envelope.intent === "book_request"}>
                 <strong>
                   Booking request. Money approval required separately. Budget USD:{" "}
-                  {String((review.envelope.payload as { budget_usd?: number })?.budget_usd ?? "not provided")}
+                  {String(
+                    isDynamicRecord(review.envelope.payload)
+                      ? (review.envelope.payload.budget_usd ?? "not provided")
+                      : "not provided",
+                  )}
                 </strong>
               </Show>
               <Text>
