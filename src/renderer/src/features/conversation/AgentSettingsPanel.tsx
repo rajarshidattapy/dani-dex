@@ -46,6 +46,8 @@ import { AgentMemoriesModal } from "./AgentMemoriesModal";
 import { AgentOperatingInstructionsModal } from "./AgentOperatingInstructionsModal";
 import { AgentRoutinesSettings, type RoutineSelectionRequest } from "./AgentRoutinesSettings";
 import { AgentSkillsModal, type AgentSkillsMode, userAssignedSkills } from "./AgentSkillsModal";
+import { SettingsPeople } from "../settings/SettingsPeople";
+import { SettingsTelegram } from "../settings/SettingsTelegram";
 import { AgentWorkOverview } from "./AgentWorkOverview";
 import { agentMemoriesPort } from "./memories-port";
 import { agentRoutinesPort } from "./routines-port";
@@ -145,6 +147,7 @@ interface TextSaveRequest {
 
 export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
   const [profileOpen, setProfileOpen] = createSignal(false);
+  const [settingsTab, setSettingsTab] = createSignal("overview");
   const [newSchedule, setNewSchedule] = createSignal(false);
   const [panelWidth, setPanelWidth] = createSettingsPanelWidth();
   const [draft, setDraft] = createStore<AgentSettingsDraft>({
@@ -587,7 +590,59 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
           closeLabel="Close details"
         />
       </Show>
-      <Show when={!draft.routines.open && !profileOpen()}>
+      <Show when={!draft.routines.open}>
+        <nav class="agent-options-tabs" aria-label="Agent options">
+          <For each={["overview", "people", "channels", "memory"]}>
+            {(tab) => (
+              <button
+                type="button"
+                aria-pressed={settingsTab() === tab}
+                class={{ selected: settingsTab() === tab }}
+                onClick={() => {
+                  setSettingsTab(tab);
+                  setProfileOpen(false);
+                  if (tab === "memory")
+                    setDraft((s) => {
+                      s.memories.open = true;
+                    });
+                }}
+              >
+                {tab[0].toUpperCase() + tab.slice(1)}
+              </button>
+            )}
+          </For>
+        </nav>
+      </Show>
+      <Show when={!draft.routines.open && settingsTab() === "people"}>
+        <SettingsPeople agentId={props.agent.id} />
+      </Show>
+      <Show when={!draft.routines.open && settingsTab() === "channels"}>
+        <SettingsPanelContent>
+          <h3>{props.agent.name}'s channels</h3>
+          <Show
+            when={props.agent.id === "chief" || props.agent.id === "chief-of-staff"}
+            fallback={<Text>Channels are managed by Chief. Specialist delivery is not available yet.</Text>}
+          >
+            <SettingsTelegram />
+          </Show>
+          <Text>Slack and WhatsApp are not connected.</Text>
+        </SettingsPanelContent>
+      </Show>
+      <Show when={!draft.routines.open && settingsTab() === "memory"}>
+        <SettingsPanelContent>
+          <Text>Memory stays local to this agent.</Text>
+          <Button
+            onClick={() =>
+              setDraft((s) => {
+                s.memories.open = true;
+              })
+            }
+          >
+            Open memory
+          </Button>
+        </SettingsPanelContent>
+      </Show>
+      <Show when={!draft.routines.open && !profileOpen() && settingsTab() === "overview"}>
         <SettingsPanelContent>
           <AgentWorkOverview
             agent={props.agent}
@@ -597,7 +652,7 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
             takeover={props.overviewTakeover}
             onOpenAgent={props.onOpenOverviewAgent}
             onSettings={() => setProfileOpen(true)}
-            onChannels={() => setProfileOpen(true)}
+            onChannels={() => setSettingsTab("channels")}
             onCreateSchedule={() => {
               setNewSchedule(true);
               setDraft((s) => {
@@ -613,7 +668,7 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
           />
         </SettingsPanelContent>
       </Show>
-      <Show when={!draft.routines.open && profileOpen()}>
+      <Show when={!draft.routines.open && profileOpen() && settingsTab() === "overview"}>
         <SettingsPanelContent>
           <Button variant="ghost" onClick={() => setProfileOpen(false)}>
             Back to Overview

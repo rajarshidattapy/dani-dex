@@ -101,6 +101,7 @@ import {
 } from "./development-remote-bootstrap";
 import { performDynamicIslandCriticalAction } from "./dynamic-island-actions";
 import { DynamicIslandWindowController } from "./dynamic-island-window";
+import { V2Control } from "./v2-control";
 import { TelegramController } from "./telegram-controller";
 import { HostService } from "./host-service";
 import { HostUpdateCoordinator } from "./host-update-coordinator";
@@ -250,6 +251,7 @@ export interface ApplicationServiceContext {
 /** Everything the entry point wires up, registers IPC handlers against, and shuts down. */
 export interface ApplicationServices {
   telegram:TelegramController;
+  v2Control:V2Control;
   service: AgentService;
   providerRuntimes: ProviderRuntimeManager;
   providerCredentials: ProviderCredentialStore;
@@ -956,6 +958,7 @@ export async function createApplicationServices({
    * reach onboarding; a server that cannot start is reported at hand-off like any other.
    */
   if (!setupState.completed || service.enabledMcpServers().length > 0) providerRuntimes.ensureToolRuntimes();
+  const v2Control = new V2Control(store.database);
   const telegram = new TelegramController({database:store.database,agents:service,credentialPath:join(app.getPath("userData"),"telegram-credentials.json"),cipher:{
     encrypt:(value)=>{if(!safeStorage.isEncryptionAvailable()||(process.platform==="linux"&&safeStorage.getSelectedStorageBackend()==="basic_text"))throw new Error("Secure Telegram storage is unavailable.");return safeStorage.encryptString(value);},
     decrypt:(value)=>{if(!safeStorage.isEncryptionAvailable()||(process.platform==="linux"&&safeStorage.getSelectedStorageBackend()==="basic_text"))throw new Error("Secure Telegram storage is unavailable.");return safeStorage.decryptString(value);}
@@ -1432,6 +1435,7 @@ export async function createApplicationServices({
 
   return {
     telegram,
+    v2Control,
     service,
     providerRuntimes,
     providerCredentials,

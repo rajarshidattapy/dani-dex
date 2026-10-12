@@ -26,10 +26,13 @@ import {
 } from "./server-inputs";
 import { requireString, stringPayload } from "./validation";
 
+import { z } from "zod";
+import type { V2Control } from "../v2-control";
 import type { TelegramController } from "../telegram-controller";
 
 interface TeamIpcDependencies {
   telegram: TelegramController;
+  v2Control: V2Control;
   host: HostService;
   remoteDesktop: RemoteDesktopManager;
   remoteServers: RemoteServerManager;
@@ -39,6 +42,7 @@ interface TeamIpcDependencies {
 export function teamIpcHandlers({
   host,
   telegram,
+  v2Control,
   remoteDesktop,
   remoteServers,
   takePendingInvite,
@@ -132,22 +136,105 @@ export function teamIpcHandlers({
       ),
     },
     host: {
-      telegramReject:payloadHandler(stringPayload("eventId",64),eventId=>telegram.rejectInbound(eventId)),
+      peerInbox: handler(() => v2Control.peerInbox()),
+      v2Status: handler(() => v2Control.status()),
+      peerEnroll: payloadHandler(
+        (value) =>
+          z
+            .object({
+              contactId: z.string().min(1).max(256),
+              humanHandle: z.string().min(1).max(256),
+              publicKeyPem: z.string().min(1).max(2048),
+            })
+            .strict()
+            .parse(value),
+        (v) => v2Control.enrollPeer(v),
+      ),
+      peerDecide: payloadHandler(
+        (value) => {
+          const v = z
+            .object({
+              review: z.object({ requestId: z.string().min(1).max(256) }).passthrough(),
+              decision: z.literal("decline"),
+              grantId: z.null(),
+            })
+            .strict()
+            .parse(value);
+          return v as {
+            review: import("@dani-dex/contracts/ipc-team-host").PeerOwnerReview;
+            decision: "decline";
+            grantId: null;
+          };
+        },
+        (v) => v2Control.decidePeer(v),
+      ),
+      v2RevokeGrant: payloadHandler(stringPayload("grantId", 256), (id) => v2Control.revokeGrant(id)),
+      v2DisconnectPeer: payloadHandler(stringPayload("contactId", 256), (id) => v2Control.disconnectPeer(id)),
+      telegramReject: payloadHandler(stringPayload("eventId", 64), (eventId) => telegram.rejectInbound(eventId)),
       telegramStatus: handler(() => telegram.status()),
-      telegramConfigure: payloadHandler((value:unknown)=>requireString(value,"token",256), token=>telegram.configure(token)),
-      telegramPair: payloadHandler((value:unknown)=>{if(!value || typeof value!=="object")throw new Error("Pairing required.");const v=value as Record<string,unknown>;return {conversationId:requireString(v.conversationId,"conversationId",64),senderId:requireString(v.senderId,"senderId",64)};},v=>telegram.pair(v.conversationId,v.senderId)),
-      telegramEnable: handler(()=>telegram.enable()),
-      telegramRevoke: handler(()=>telegram.revoke()),
-      telegramApproveReply:payloadHandler((value:unknown)=>{if(!value||typeof value!=="object")throw new Error("Reply review required.");const v=value as Record<string,unknown>;return {replyId:requireString(v.replyId,"replyId",256),body:requireString(v.body,"body",4096),conversationId:requireString(v.conversationId,"conversationId",64),senderId:requireString(v.senderId,"senderId",64)};},v=>telegram.approveReply(v.replyId,v.body,v.conversationId,v.senderId)),
+      telegramConfigure: payloadHandler(
+        (value: unknown) => requireString(value, "token", 256),
+        (token) => telegram.configure(token),
+      ),
+      telegramPair: payloadHandler(
+        (value: unknown) => {
+          if (!value || typeof value !== "object") throw new Error("Pairing required.");
+          const v = value as Record<string, unknown>;
+          return {
+            conversationId: requireString(v.conversationId, "conversationId", 64),
+            senderId: requireString(v.senderId, "senderId", 64),
+          };
+        },
+        (v) => telegram.pair(v.conversationId, v.senderId),
+      ),
+      telegramEnable: handler(() => telegram.enable()),
+      telegramRevoke: handler(() => telegram.revoke()),
+      telegramApproveReply: payloadHandler(
+        (value: unknown) => {
+          if (!value || typeof value !== "object") throw new Error("Reply review required.");
+          const v = value as Record<string, unknown>;
+          return {
+            replyId: requireString(v.replyId, "replyId", 256),
+            body: requireString(v.body, "body", 4096),
+            conversationId: requireString(v.conversationId, "conversationId", 64),
+            senderId: requireString(v.senderId, "senderId", 64),
+          };
+        },
+        (v) => telegram.approveReply(v.replyId, v.body, v.conversationId, v.senderId),
+      ),
       telegramApproveMedia: payloadHandler(
-        (value: unknown) => z.object({ eventId: z.string().min(1).max(64), reviewDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict().parse(value),
+        (value: unknown) =>
+          z
+            .object({ eventId: z.string().min(1).max(64), reviewDigest: z.string().regex(/^[a-f0-9]{64}$/) })
+            .strict()
+            .parse(value),
         (v) => telegram.approveMedia(v.eventId, v.reviewDigest),
       ),
-      telegramApprove: payloadHandler((value:unknown)=>{if(!value || typeof value!=="object")throw new Error("Review required.");const v=value as Record<string,unknown>;return {eventId:requireString(v.eventId,"eventId",64),body:requireString(v.body,"body",32000),conversationId:requireString(v.conversationId,"conversationId",64),senderId:requireString(v.senderId,"senderId",64)};},v=>telegram.approveInbound(v.eventId,v.body,v.conversationId,v.senderId)),
+      telegramApprove: payloadHandler(
+        (value: unknown) => {
+          if (!value || typeof value !== "object") throw new Error("Review required.");
+          const v = value as Record<string, unknown>;
+          return {
+            eventId: requireString(v.eventId, "eventId", 64),
+            body: requireString(v.body, "body", 32000),
+            conversationId: requireString(v.conversationId, "conversationId", 64),
+            senderId: requireString(v.senderId, "senderId", 64),
+          };
+        },
+        (v) => telegram.approveInbound(v.eventId, v.body, v.conversationId, v.senderId),
+      ),
 
       getRcGateway: handler(() => host.getRcGateway()),
-      setRcGateway: payloadHandler((value: unknown) => { if (typeof value !== "boolean") throw new Error("RC enabled must be a boolean."); return value; }, (enabled) => host.setRcGateway(enabled)),
-      createDevicePairingLink: payloadHandler(stringPayload("origin", 2048), (origin) => host.createDevicePairingLink(origin)),
+      setRcGateway: payloadHandler(
+        (value: unknown) => {
+          if (typeof value !== "boolean") throw new Error("RC enabled must be a boolean.");
+          return value;
+        },
+        (enabled) => host.setRcGateway(enabled),
+      ),
+      createDevicePairingLink: payloadHandler(stringPayload("origin", 2048), (origin) =>
+        host.createDevicePairingLink(origin),
+      ),
       getStatus: handler(() => host.getStatus()),
       configure: payloadHandler(parseHostConfig, (config) => host.configure(config)),
       updateIdentity: payloadHandler(parseHostIdentity, (identity) => host.updateIdentity(identity)),

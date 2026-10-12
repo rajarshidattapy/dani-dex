@@ -2224,6 +2224,12 @@ export function createMockDaniDex(options: MockDaniDexOptions = {}): MockDaniDex
       removeMember: async (memberId) => {
         teamMembers = teamMembers.filter((member) => member.id !== memberId);
       },
+      peerInbox: async () => [],
+      peerEnroll: async () => {throw new Error("Local enrollment unavailable in preview.");},
+      peerDecide: async () => {},
+      v2Status: async () => ({contacts:[],grants:[],requests:[]}),
+      v2RevokeGrant: async () => {},
+      v2DisconnectPeer: async () => {},
       telegramStatus: async () => ({configured:false,enabled:false,error:null,pending:[],replies:[],uncertainReplies:[]}),
     telegramConfigure: async () => {},
     telegramPair: async () => {},

@@ -469,19 +469,41 @@ export interface PluginsDesktopApi {
 }
 
 export interface HostDesktopApi {
-  telegramReject:(eventId:string)=>Promise<void>;
+  v2DisconnectPeer: (contactId: string) => Promise<void>;
+  v2RevokeGrant: (grantId: string) => Promise<void>;
+  v2Status: () => Promise<import("./ipc-team-host").V2ControlStatus>;
+  peerDecide: (input: {
+    review: import("./ipc-team-host").PeerOwnerReview;
+    decision: "decline";
+    grantId: null;
+  }) => Promise<void>;
+  peerEnroll: (input: { contactId: string; humanHandle: string; publicKeyPem: string }) => Promise<string>;
+  peerInbox: () => Promise<import("./ipc-team-host").PeerOwnerReview[]>;
+  telegramReject: (eventId: string) => Promise<void>;
   telegramStatus: () => Promise<import("./ipc-team-host").TelegramGatewayStatus>;
-  telegramConfigure: (token:string) => Promise<void>;
-  telegramPair: (input:{conversationId:string;senderId:string}) => Promise<void>;
+  telegramConfigure: (token: string) => Promise<void>;
+  telegramPair: (input: { conversationId: string; senderId: string }) => Promise<void>;
   telegramEnable: () => Promise<void>;
   telegramRevoke: () => Promise<void>;
-  telegramApproveReply: (input:{replyId:string;body:string;conversationId:string;senderId:string})=>Promise<void>;
+  telegramApproveReply: (input: {
+    replyId: string;
+    body: string;
+    conversationId: string;
+    senderId: string;
+  }) => Promise<void>;
   telegramApproveMedia: (input: { eventId: string; reviewDigest: string }) => Promise<void>;
-  telegramApprove: (input:{eventId:string;body:string;conversationId:string;senderId:string}) => Promise<void>;
+  telegramApprove: (input: {
+    eventId: string;
+    body: string;
+    conversationId: string;
+    senderId: string;
+  }) => Promise<void>;
 
   getRcGateway: () => Promise<import("./ipc-team-host").RcGatewayStatus>;
   setRcGateway: (enabled: boolean) => Promise<import("./ipc-team-host").RcGatewayStatus>;
-  createDevicePairingLink: (origin: string) => Promise<{ url: string; expiresAt: number; code: string; appUrl: string }>;
+  createDevicePairingLink: (
+    origin: string,
+  ) => Promise<{ url: string; expiresAt: number; code: string; appUrl: string }>;
   getStatus: () => Promise<HostStatus>;
   configure: (input: ConfigureHostInput) => Promise<HostStatus>;
   updateIdentity: (input: UpdateHostIdentityInput) => Promise<HostStatus>;

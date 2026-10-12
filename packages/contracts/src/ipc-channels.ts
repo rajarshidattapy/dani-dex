@@ -271,6 +271,12 @@ export const IPC_CHANNELS = {
   // arrive before the window that shows it exists.
   pluginsOpenListing: "plugins:open-listing",
   pluginsTakePendingListing: "plugins:take-pending-listing",
+  hostPeerInbox: "host:peerInbox",
+  hostPeerEnroll: "host:peerEnroll",
+  hostPeerDecide: "host:peerDecide",
+  hostV2Status: "host:v2Status",
+  hostV2RevokeGrant: "host:v2RevokeGrant",
+  hostV2DisconnectPeer: "host:v2DisconnectPeer",
   hostGetStatus: "host:get-status",
   hostTelegramReject: "host:telegram-reject",
   hostTelegramStatus: "host:telegram-status",

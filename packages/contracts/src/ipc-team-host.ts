@@ -457,9 +457,23 @@ import { isBoolean, isDynamicRecord, isNumber, isString } from "./runtime-values
 
 export interface TelegramGatewayStatus {
   /** Source metadata only. No download, transcription or delivery is implied. */
-  mediaPending?: Array<{ updateId: string; messageId: string; conversationId: string; senderId: string; kind: "voice" | "document"; fileId: string; uniqueId: string; size: number | null; claimedMimeType: string | null; safeName: string; caption: string; edited: boolean; reviewDigest: string }>;
-  uncertainReplies:Array<{replyId:string;conversationId:string}>;
-  replies:Array<{replyId:string;conversationId:string;senderId:string;body:string}>;
+  mediaPending?: Array<{
+    updateId: string;
+    messageId: string;
+    conversationId: string;
+    senderId: string;
+    kind: "voice" | "document";
+    fileId: string;
+    uniqueId: string;
+    size: number | null;
+    claimedMimeType: string | null;
+    safeName: string;
+    caption: string;
+    edited: boolean;
+    reviewDigest: string;
+  }>;
+  uncertainReplies: Array<{ replyId: string; conversationId: string }>;
+  replies: Array<{ replyId: string; conversationId: string; senderId: string; body: string }>;
   configured: boolean;
   enabled: boolean;
   error: string | null;
@@ -471,4 +485,32 @@ export interface TelegramGatewayStatus {
     generation: number;
     nextOffset: number;
   }>;
+}
+
+export interface PeerOwnerReview {
+  requestId: string;
+  contactId: string;
+  transportPrincipal: string;
+  contextId: string;
+  claimedPrincipal: { handle: string; display: string };
+  verifiedHumanHandle?: string;
+  displayText?: string;
+  displayEnvelope?: import("./runtime-values").DynamicRecord;
+  envelopeHash?: string;
+  text: string;
+  envelope: import("./runtime-values").DynamicRecord;
+  state: string;
+  deadline: number | null;
+}
+export interface PeerOwnerGrantInput {
+  contactId: string;
+  purpose: string;
+  capabilities: string[];
+  audiences: string[];
+  expiresAt: number;
+}
+export interface V2ControlStatus {
+  contacts: Array<{ contactId: string; humanHandle: string; connected: boolean }>;
+  grants: Array<{ grantId: string; contactId: string; purpose: string; expiresAt: number; revoked: boolean }>;
+  requests: Array<{ requestId: string; contactId: string; state: string; deadline: number | null }>;
 }

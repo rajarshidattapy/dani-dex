@@ -301,6 +301,7 @@ function attachWindowsSessionEndHandlers(window: BrowserWindow): void {
 function registerIpcHandlers(
   {
     telegram,
+    v2Control,
     service,
     providerRuntimes,
     providerCredentials,
@@ -400,6 +401,7 @@ function registerIpcHandlers(
     ...updateIpcHandlers({ updater, updatePreferenceFile }),
     ...teamIpcHandlers({
       telegram,
+      v2Control,
       host,
       remoteDesktop,
       remoteServers,
