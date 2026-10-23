@@ -1,0 +1,24 @@
+# Reference actions for a local Dani-Dex development environment.
+# This metadata is intentionally provider-neutral and is not loaded from a provider-specific path.
+version = 1
+name = "openbot"
+
+[setup]
+script = """
+bun scripts/prepare-dev-environment.ts
+"""
+
+[[actions]]
+name = "Run"
+icon = "run"
+command = "bun run dev --isolated"
+
+[[actions]]
+name = "Storybook"
+icon = "tool"
+command = "bun run storybook"
+
+[[actions]]
+name = "Test"
+icon = "test"
+command = "bun run test"
