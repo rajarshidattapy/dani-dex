@@ -9,7 +9,7 @@ if (repositoryRoot === undefined) {
   process.exit(0);
 }
 
-const result = spawnSync("git", ["config", "core.hooksPath", ".githooks"], {
+const result = spawnSync("git", ["config", "core.hooksPath", ".github"], {
   cwd: repositoryRoot,
   stdio: "inherit",
 });
@@ -18,7 +18,7 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1);
 }
 
-logger.info("Git hooks enabled from .githooks.");
+logger.info("Git hooks enabled from .github.");
 
 function runGit(args: string[], inheritOutput: boolean): string | undefined {
   const result = spawnSync("git", args, {
