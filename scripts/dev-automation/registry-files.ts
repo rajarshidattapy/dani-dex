@@ -22,6 +22,11 @@ export interface DirectoryOwnership {
   symbolicLink: boolean;
 }
 
+export interface WindowsDirectorySecurity {
+  ownerIsCurrentUser: boolean;
+  writableByUntrustedAccount: boolean;
+}
+
 // Publishing into a directory somebody else controls is worse than not
 // publishing at all: they could replace a record with a forged one naming this
 // worktree, a live pid and a CDP port of their choosing, and a mutation command
@@ -47,13 +52,67 @@ export function assertOwnerOnlyDirectory(
   }
 }
 
+export function assertWindowsOwnerOnlyDirectory(directory: string, security: WindowsDirectorySecurity): void {
+  if (!security.ownerIsCurrentUser || security.writableByUntrustedAccount) {
+    throw new Error(
+      `${directory} is not owned exclusively by this Windows account, so dev instances will not be published there. ` +
+        "Remove it and start `bun run dev` again.",
+    );
+  }
+}
+
 export function assertRegistryDirectoryOwnership(directory: string): void {
   const stats = lstatSync(directory);
+  if (stats.isSymbolicLink()) {
+    throw new Error(
+      `${directory} is not owned by this user, so dev instances will not be published there. ` +
+        "Remove it and start `bun run dev` again.",
+    );
+  }
+  if (process.platform === "win32") {
+    assertWindowsOwnerOnlyDirectory(directory, readWindowsDirectorySecurity(directory));
+    return;
+  }
   assertOwnerOnlyDirectory(directory, {
     uid: stats.uid,
     mode: stats.mode,
-    symbolicLink: stats.isSymbolicLink(),
+    symbolicLink: false,
   });
+}
+
+function readWindowsDirectorySecurity(directory: string): WindowsDirectorySecurity {
+  const script = [
+    "$path = [Console]::In.ReadToEnd()",
+    "try {",
+    "  $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
+    "  $acl = Get-Acl -LiteralPath $path",
+    "  $owner = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value",
+    "  $trusted = @($identity, 'S-1-5-18', 'S-1-5-32-544')",
+    "  $dangerous = [System.Security.AccessControl.FileSystemRights]::Write -bor [System.Security.AccessControl.FileSystemRights]::Delete -bor [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor [System.Security.AccessControl.FileSystemRights]::TakeOwnership",
+    "  $untrustedWrite = $false",
+    "  foreach ($rule in $acl.Access) {",
+    "    if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }",
+    "    $sid = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value",
+    "    if (($trusted -contains $sid) -or (($rule.FileSystemRights -band $dangerous) -eq 0)) { continue }",
+    "    $untrustedWrite = $true",
+    "    break",
+    "  }",
+    '  Write-Output "$($owner -eq $identity)|$untrustedWrite"',
+    "} catch {",
+    "  Write-Output 'false|true'",
+    "}",
+  ].join("\n");
+  const result = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    encoding: "utf8",
+    input: directory,
+    timeout: 5_000,
+    stdio: ["pipe", "pipe", "ignore"],
+  }).trim();
+  const [ownerIsCurrentUser, writableByUntrustedAccount] = result.split("|");
+  return {
+    ownerIsCurrentUser: ownerIsCurrentUser === "True",
+    writableByUntrustedAccount: writableByUntrustedAccount === "True",
+  };
 }
 
 // Owner-only, because the path is predictable and shared: on a multi-account
@@ -63,12 +122,42 @@ export function assertRegistryDirectoryOwnership(directory: string): void {
 // belongs to someone else, and then the assertion below fails anyway.
 export function ensureOwnerOnlyDirectory(directory: string): void {
   mkdirSync(directory, { recursive: true, mode: 0o700 });
-  try {
-    chmodSync(directory, 0o700);
-  } catch {
-    // Not ours to tighten - asserted below, which is what fails closed.
+  if (process.platform === "win32") {
+    const stats = lstatSync(directory);
+    if (stats.isSymbolicLink()) {
+      throw new Error(
+        `${directory} is not owned by this user, so dev instances will not be published there. ` +
+          "Remove it and start `bun run dev` again.",
+      );
+    }
+    const security = readWindowsDirectorySecurity(directory);
+    assertWindowsOwnerOnlyDirectory(directory, { ...security, writableByUntrustedAccount: false });
+    tightenWindowsDirectoryPermissions(directory);
+  } else {
+    try {
+      chmodSync(directory, 0o700);
+    } catch {
+      // Not ours to tighten - asserted below, which is what fails closed.
+    }
   }
   assertRegistryDirectoryOwnership(directory);
+}
+
+function tightenWindowsDirectoryPermissions(directory: string): void {
+  const identity = execFileSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
+    ],
+    { encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] },
+  ).trim();
+  execFileSync("icacls.exe", [directory, "/inheritance:r", "/grant:r", `*${identity}:(OI)(CI)F`], {
+    timeout: 5_000,
+    stdio: "ignore",
+  });
 }
 
 // Written through a sibling and renamed into place. A plain write truncates

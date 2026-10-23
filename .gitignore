@@ -57,3 +57,7 @@ Bots
 mise.local.toml
 # Local provider credential export. Never commit.
 keys
+#build
+.dani-dex-build/
+.dev-logs/
+.dev-temp/
