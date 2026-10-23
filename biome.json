@@ -13,8 +13,6 @@
   "files": {
     "includes": [
       "**",
-      "!!.codex",
-      "!!.claude",
       "!node_modules",
       "!!out",
       "!!out-*",

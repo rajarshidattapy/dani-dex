@@ -1,6 +1,7 @@
 // The registry exists because several worktrees run dev at once. What it has
 // to get right is which of them a command drives, and that a dead instance
 // never keeps offering its port to the next one.
+import { execFileSync } from "node:child_process";
 import { chmodSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +16,14 @@ import {
   selectDevInstance,
   writeDevInstanceRecord,
 } from "./instance-registry";
-import { assertOwnerOnlyDirectory, isRecordedProcess, verifyRecordedProcess } from "./registry-files";
+import {
+  assertOwnerOnlyDirectory,
+  assertRegistryDirectoryOwnership,
+  assertWindowsOwnerOnlyDirectory,
+  ensureOwnerOnlyDirectory,
+  isRecordedProcess,
+  verifyRecordedProcess,
+} from "./registry-files";
 
 function record(overrides: Partial<DevInstanceRecord> = {}): DevInstanceRecord {
   return {
@@ -143,6 +151,7 @@ describe("readDevInstanceRecords", () => {
   });
 
   it("survives a half-written or hand-edited file", () => {
+    ensureOwnerOnlyDirectory(directory);
     writeFileSync(join(directory, "app-9.json"), "{ not json", "utf8");
     writeFileSync(join(directory, "app-10.json"), JSON.stringify({ service: "app" }), "utf8");
     expect(readDevInstanceRecords(directory, () => true)).toEqual([]);
@@ -242,11 +251,15 @@ describe("writeDevInstanceRecord permissions", () => {
   it("keeps the registry directory and its records readable only by their owner", () => {
     const directory = mkdtempSync(join(tmpdir(), "dani-dex-registry-mode-"));
     writeDevInstanceRecord(record(), directory);
-    // The path is predictable and lives in a shared /tmp, so the mode is the
-    // only thing keeping another local account from reading which worktree a
-    // developer has open.
-    expect(statSync(directory).mode & 0o777).toBe(0o700);
-    expect(statSync(join(directory, "app-4242.json")).mode & 0o777).toBe(0o600);
+    if (process.platform === "win32") {
+      assertRegistryDirectoryOwnership(directory);
+    } else {
+      // The path is predictable and lives in a shared /tmp, so the mode is the
+      // only thing keeping another local account from reading which worktree a
+      // developer has open.
+      expect(statSync(directory).mode & 0o777).toBe(0o700);
+      expect(statSync(join(directory, "app-4242.json")).mode & 0o777).toBe(0o600);
+    }
     rmSync(directory, { recursive: true, force: true });
   });
 });
@@ -276,15 +289,36 @@ describe("assertOwnerOnlyDirectory", () => {
   it("guards the reader too, not only the writer", () => {
     const directory = mkdtempSync(join(tmpdir(), "dani-dex-registry-read-"));
     writeDevInstanceRecord(record(), directory);
-    chmodSync(directory, 0o777);
+    if (process.platform === "win32") {
+      execFileSync("icacls.exe", [directory, "/grant", "*S-1-1-0:(OI)(CI)M"], { stdio: "ignore" });
+    } else {
+      chmodSync(directory, 0o777);
+    }
     // A reader that never publishes would otherwise trust a planted record.
-    expect(() => readDevInstanceRecords(directory, () => true)).toThrow("accessible to other accounts");
+    expect(() => readDevInstanceRecords(directory, () => true)).toThrow(
+      process.platform === "win32" ? "not owned exclusively" : "accessible to other accounts",
+    );
     rmSync(directory, { recursive: true, force: true });
   });
 
   it("accepts the owner-only directory dev publishes into", () => {
     expect(() =>
       assertOwnerOnlyDirectory("/tmp/registry", { uid: 501, mode: 0o40700, symbolicLink: false }, 501),
+    ).not.toThrow();
+  });
+
+  it("refuses a Windows directory an untrusted account can write", () => {
+    expect(() =>
+      assertWindowsOwnerOnlyDirectory("C:\\Temp\\registry", {
+        ownerIsCurrentUser: true,
+        writableByUntrustedAccount: true,
+      }),
+    ).toThrow("not owned exclusively");
+    expect(() =>
+      assertWindowsOwnerOnlyDirectory("C:\\Temp\\registry", {
+        ownerIsCurrentUser: true,
+        writableByUntrustedAccount: false,
+      }),
     ).not.toThrow();
   });
 });

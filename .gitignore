@@ -37,9 +37,6 @@ index-*.css
 .openbot-browser-test/
 .openbot-build/
 .worktrees/
-# Claude Code creates git worktrees here; they carry a nested biome.json.
-.claude/worktrees/
-.claude/settings.local.json
 /build/cloudflared/
 /build/cua-driver/
 /build/codex/
@@ -57,3 +54,7 @@ Bots
 mise.local.toml
 # Local provider credential export. Never commit.
 keys
+#build
+.dani-dex-build/
+.dev-logs/
+.dev-temp/

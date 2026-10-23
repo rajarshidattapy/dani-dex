@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   configureMobileConnectDevelopmentNetwork,
@@ -117,6 +118,16 @@ describe("development service runner", () => {
       expect(spec.env.ELECTRON_EXTRA_LAUNCH_ARGS).toBeUndefined();
     }
     expect(environment.ELECTRON_RUN_AS_NODE).toBe("1");
+  });
+
+  it("uses Bun's Windows executables when they are installed", () => {
+    if (process.platform !== "win32") return;
+    expect(createDevelopmentServiceSpec("remote").executable).toBe(
+      join(projectRoot, "node_modules", ".bin", "dotenvx.exe"),
+    );
+    expect(createDevelopmentServiceSpec("app").executable).toBe(
+      join(projectRoot, "node_modules", ".bin", "electron-vite.exe"),
+    );
   });
 
   it("enables hosted sites in the development environment", () => {
