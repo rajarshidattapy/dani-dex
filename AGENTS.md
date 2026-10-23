@@ -94,6 +94,11 @@ does not behave as expected.
 Use [docs/glossary.md](docs/glossary.md) when naming a new type, table, IPC channel or product
 string, or when a term in the code disagrees with the UI.
 
+## Repository agent configuration
+
+Keep repository-owned agent rules, skills, plugins, and tool metadata in `.agents/`. Do not add
+provider-specific root folders such as `.claude/`, `.codex/`, or `.kiro/`.
+
 ## Task-specific instructions
 
 Read the instruction file for each directory you change. Use the
