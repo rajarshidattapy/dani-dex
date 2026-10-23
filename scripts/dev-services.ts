@@ -121,7 +121,7 @@ export function createDevelopmentServiceSpec(
   }
 
   if (name === "remote") {
-    const dotenvx = join(projectRoot, "node_modules", ".bin", process.platform === "win32" ? "dotenvx.cmd" : "dotenvx");
+    const dotenvx = nodeBinExecutable("dotenvx");
     return {
       name,
       executable: dotenvx,
@@ -147,12 +147,7 @@ export function createDevelopmentServiceSpec(
 
   const isTestClient = name === "test-client";
   const outputDirectory = isTestClient ? "out-dev-test-client" : "out-dev-app";
-  const electronVite = join(
-    projectRoot,
-    "node_modules",
-    ".bin",
-    process.platform === "win32" ? "electron-vite.cmd" : "electron-vite",
-  );
+  const electronVite = nodeBinExecutable("electron-vite");
   return {
     name,
     executable: electronVite,
@@ -171,6 +166,12 @@ export function createDevelopmentServiceSpec(
       DANI_DEX_DEV_REMOTE_ROLE: childEnvironment.DANI_DEX_DEV_REMOTE_ROLE ?? (isTestClient ? "client" : "host"),
     },
   };
+}
+
+function nodeBinExecutable(name: string): string {
+  const executable = join(projectRoot, "node_modules", ".bin", name);
+  if (process.platform === "win32" && existsSync(`${executable}.exe`)) return `${executable}.exe`;
+  return `${executable}${process.platform === "win32" ? ".cmd" : ""}`;
 }
 
 // The ports in the spec are the ones this instance actually won, after
