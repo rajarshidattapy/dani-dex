@@ -3,6 +3,9 @@
 **Your own AI team, on your own computer.** Tell Dani-Dex what you need in plain words. Its agents
 plan the work, use your apps, files and browser, talk to each other, and come back with the job done.
 
+<img width="1600" height="1200" alt="image" src="https://github.com/user-attachments/assets/2a14a0b2-a69c-4dc2-acc1-4b2dd1113dda" />
+
+
 <p align="center">
   <a href="https://github.com/somdipto/dani-dex/releases/latest/download/Dani-Dex-mac-universal.dmg"><img alt="Download for macOS" src="https://img.shields.io/badge/Download_for-macOS-111111?style=for-the-badge&amp;logo=apple&amp;logoColor=white"></a>
   <a href="https://github.com/somdipto/dani-dex/releases/latest/download/Dani-Dex-windows-x64.exe"><img alt="Download for Windows" src="https://img.shields.io/badge/Download_for-Windows-0078D4?style=for-the-badge&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDBoMTEuNHYxMS40SDB6TTEyLjYgMEgyNHYxMS40SDEyLjZ6TTAgMTIuNmgxMS40VjI0SDB6TTEyLjYgMTIuNkgyNFYyNEgxMi42eiIvPjwvc3ZnPg%3D%3D"></a>
