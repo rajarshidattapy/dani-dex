@@ -119,7 +119,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.identity.outputs.tag }}
         run: |
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          artifact_repo="$(jq -r '.remoteDesktop.artifactRelease.repository // empty' native-runtime.lock.json)"
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || { [ -n "$artifact_repo" ] && gh release view "$RELEASE_TAG" --repo "$artifact_repo" >/dev/null 2>&1; }; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
