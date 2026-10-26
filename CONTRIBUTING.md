@@ -14,7 +14,7 @@ review.
 ## Development setup
 
 ```bash
-git clone https://github.com/nightly-labs/openbot.git
+git clone https://github.com/somdipto/dani-dex.git
 cd dani-dex
 bun install --frozen-lockfile
 bun run check
